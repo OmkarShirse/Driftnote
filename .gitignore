@@ -1,0 +1,8 @@
+target/
+**/target/
+src-tauri/target/
+src-tauri/gen/
+**/.driftnote-trash/
+.DS_Store
+*.tmp_*
+last_root.txt

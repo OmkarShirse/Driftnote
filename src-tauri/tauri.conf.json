@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Driftnote",
+  "version": "0.1.0",
+  "identifier": "com.driftnote.desktop",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "csp": "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src ipc: http://ipc.localhost; font-src 'self'; form-action 'none'; base-uri 'none';"
+    },
+    "windows": [
+      {
+        "title": "Driftnote",
+        "width": 1180,
+        "height": 800,
+        "minWidth": 420,
+        "minHeight": 360,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage", "rpm"],
+    "category": "Office",
+    "shortDescription": "Offline Markdown and JSON Canvas note manager",
+    "longDescription": "A fully local, zero-network notebook and visual canvas board manager.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
+
