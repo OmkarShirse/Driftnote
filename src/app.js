@@ -1,187 +1,125 @@
 /* ==========================================================================
-   DRIFTNOTE FRONTEND CORE (TAURI V2 OFFLINE NOTES & JSON CANVAS)
+   DRIFTNOTE APP - CORE LOGIC & REDESIGNED WORKSPACE
    ========================================================================== */
-
-const IMG_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
-const READ_EXTS = ['md', 'canvas', ...IMG_EXTS];
 
 /* ==========================================================================
-   IMAGE LRU CACHE (MAX 50)
+   HOTKEYS & KEYMAP ENGINE
    ========================================================================== */
-class ImageLRUCache {
-  constructor(limit = 50) {
-    this.limit = limit;
-    this.cache = new Map();
-  }
-  get(key) {
-    if (!this.cache.has(key)) return null;
-    const val = this.cache.get(key);
-    this.cache.delete(key);
-    this.cache.set(key, val);
-    return val;
-  }
-  set(key, val) {
-    if (this.cache.has(key)) this.cache.delete(key);
-    else if (this.cache.size >= this.limit) {
-      const oldestKey = this.cache.keys().next().value;
-      this.cache.delete(oldestKey);
-    }
-    this.cache.set(key, val);
-  }
-  clear() {
-    this.cache.clear();
-  }
-}
-const imageCache = new ImageLRUCache(50);
+const DEFAULT_KEYMAP = {
+  'file:save': 'Ctrl+S',
+  'file:new-note': 'Ctrl+N',
+  'file:new-canvas': 'Ctrl+Shift+N',
+  'file-explorer:move-file': 'Ctrl+M',
+  'app:delete-file': 'Ctrl+Delete',
+  'workspace:next-tab': 'Ctrl+PageDown',
+  'workspace:previous-tab': 'Ctrl+PageUp',
+  'workspace:close-tab': 'Ctrl+W',
+  'app:command-palette': 'Ctrl+K',
+  'app:toggle-view-mode': 'Ctrl+E',
+  'app:toggle-theme': 'Ctrl+Shift+T',
+  'app:toggle-left-sidebar': 'Shift+ArrowLeft',
+  'app:toggle-right-sidebar': 'Shift+ArrowRight',
+  'app:switch-vault': 'F1',
+  'app:reload': 'F5',
+  'editor:toggle-highlight': 'F9',
+  'editor:insert-footnote': 'F12',
+  'slides:start': 'F4',
+  'obsidian-mind-map:app:markmap-preview': 'F4',
+  'pexels-banner:open-pixel-banner-select': 'F8',
+  'app:open-shortcuts': 'Ctrl+/'
+};
 
-function getMimeType(ext) {
-  const e = String(ext || '').toLowerCase().replace(/^\./, '');
-  if (e === 'svg') return 'image/svg+xml';
-  if (e === 'jpg' || e === 'jpeg') return 'image/jpeg';
-  if (e === 'png') return 'image/png';
-  if (e === 'gif') return 'image/gif';
-  if (e === 'webp') return 'image/webp';
-  return 'application/octet-stream';
+const ACTION_DESCRIPTIONS = {
+  'file:save': 'Save active file',
+  'file:new-note': 'New Markdown note',
+  'file:new-canvas': 'New Canvas board',
+  'file-explorer:move-file': 'Rename / move file',
+  'app:delete-file': 'Delete current file (Trash)',
+  'workspace:next-tab': 'Next open tab',
+  'workspace:previous-tab': 'Previous open tab',
+  'workspace:close-tab': 'Close active tab',
+  'app:command-palette': 'Open command palette',
+  'app:toggle-view-mode': 'Toggle Read / Edit mode',
+  'app:toggle-theme': 'Toggle light / dark theme',
+  'app:toggle-left-sidebar': 'Toggle file drawer',
+  'app:toggle-right-sidebar': 'Toggle outline widget',
+  'app:switch-vault': 'Open vault / folder',
+  'app:reload': 'Reload workspace tree',
+  'editor:toggle-highlight': 'Toggle highlight (==text==)',
+  'editor:insert-footnote': 'Insert footnote reference',
+  'slides:start': 'Start slide presentation',
+  'obsidian-mind-map:app:markmap-preview': 'Mind map preview',
+  'pexels-banner:open-pixel-banner-select': 'Choose banner image',
+  'app:open-shortcuts': 'Open keyboard shortcuts'
+};
+
+let KEYMAP = { ...DEFAULT_KEYMAP };
+try {
+  const custom = JSON.parse(localStorage.getItem('dn_keys') || '{}');
+  Object.assign(KEYMAP, custom);
+} catch (_) {}
+
+function saveKeymap() {
+  localStorage.setItem('dn_keys', JSON.stringify(KEYMAP));
 }
 
-/* ==========================================================================
-   STORAGE ADAPTER (TAURI V2 VS BROWSER BACKEND)
-   ========================================================================== */
-class TauriBackend {
-  constructor() {
-    this.core = window.__TAURI__.core;
-    this.event = window.__TAURI__.event;
-    this.unlistenWatcher = null;
-  }
-  async pickRoot() {
-    return await this.core.invoke('pick_root');
-  }
-  async listTree() {
-    return await this.core.invoke('list_tree');
-  }
-  async readText(path) {
-    return await this.core.invoke('read_text', { path });
-  }
-  async readBinary(path) {
-    return await this.core.invoke('read_binary', { path });
-  }
-  async writeText(path, content, expectedMtime = null, force = false) {
-    return await this.core.invoke('write_text', {
-      path,
-      content,
-      expectedMtime: (expectedMtime !== null && expectedMtime !== undefined) ? expectedMtime : null,
-      force: !!force
-    });
-  }
-  async createFile(path) {
-    return await this.core.invoke('create_file', { path });
-  }
-  async createDir(path) {
-    return await this.core.invoke('create_dir', { path });
-  }
-  async rename(from, to) {
-    return await this.core.invoke('rename', { from, to });
-  }
-  async remove(path) {
-    return await this.core.invoke('trash', { path });
-  }
-  async stopWatch() {
-    try {
-      if (typeof this.unlistenWatcher === 'function') {
-        this.unlistenWatcher();
-        this.unlistenWatcher = null;
-      }
-      await this.core.invoke('stop_watch');
-    } catch (e) {}
-  }
-  async watch(callback) {
-    await this.stopWatch();
-    try {
-      await this.core.invoke('start_watch');
-      this.unlistenWatcher = await this.event.listen('fs-changed', event => callback(event.payload));
-    } catch (err) {
-      console.error('Watcher initialization error:', err);
+function resetKeymap() {
+  KEYMAP = { ...DEFAULT_KEYMAP };
+  localStorage.removeItem('dn_keys');
+}
+
+function normalizeKeyCombo(e) {
+  if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return null;
+  const mods = [];
+  if (e.ctrlKey || e.metaKey) mods.push('Ctrl');
+  if (e.altKey) mods.push('Alt');
+  if (e.shiftKey) mods.push('Shift');
+
+  let key = e.key;
+  if (key === ' ') key = 'Space';
+  else if (key.length === 1) key = key.toUpperCase();
+  else if (/^f\d{1,2}$/i.test(key)) key = key.toUpperCase();
+
+  return mods.length ? `${mods.join('+')}+${key}` : key;
+}
+
+function findActionForKey(combo) {
+  if (!combo) return null;
+  const target = combo.toLowerCase();
+  for (const [action, binding] of Object.entries(KEYMAP)) {
+    if (binding && binding.toLowerCase() === target) {
+      return action;
     }
   }
+  return null;
 }
 
-class BrowserBackend {
-  constructor() {
-    this.memoryFiles = new Map();
-    this.rootName = 'Local Demo Vault';
-    this.seed();
-  }
-  seed() {
-    this.memoryFiles.set('Welcome.md', '# Welcome to Driftnote\n\nOffline Markdown and JSON Canvas workspace.\n\n![[demo.png|300]]');
-    this.memoryFiles.set('Board.canvas', JSON.stringify({
-      nodes: [
-        { id: '1', type: 'text', text: '# Idea\nSimple local notes.', x: 40, y: 40, width: 220, height: 120, color: '4' },
-        { id: '2', type: 'text', text: 'Visual Canvas connected.', x: 340, y: 40, width: 220, height: 100, styleAttributes: { shape: 'pill', border: 'dashed', borderWidth: 2 } }
-      ],
-      edges: [{ id: 'e1', fromNode: '1', toNode: '2' }]
-    }, null, 2));
-  }
-  async pickRoot() { return this.rootName; }
-  async listTree() {
-    const children = [];
-    for (const [path] of this.memoryFiles.entries()) {
-      children.push({
-        name: path.split('/').pop(),
-        path: path,
-        kind: 'file',
-        mtime: Date.now(),
-        children: null
-      });
+function detectHotkeyConflicts() {
+  const seen = new Map();
+  const conflicts = [];
+  for (const [act, key] of Object.entries(KEYMAP)) {
+    if (!key) continue;
+    const norm = key.toLowerCase();
+    if (seen.has(norm)) {
+      conflicts.push({ key, actions: [seen.get(norm), act] });
+    } else {
+      seen.set(norm, act);
     }
-    return { name: this.rootName, path: '', kind: 'directory', mtime: Date.now(), children };
   }
-  async readText(path) { return this.memoryFiles.get(path) || ''; }
-  async readBinary(_path) { return ''; }
-  async writeText(path, content, _expectedMtime, _force) {
-    this.memoryFiles.set(path, content);
-    return Date.now();
-  }
-  async createFile(path) {
-    this.memoryFiles.set(path, path.endsWith('.canvas') ? '{"nodes":[],"edges":[]}' : '# \n\n');
-    return Date.now();
-  }
-  async createDir() {}
-  async rename(from, to) {
-    const v = this.memoryFiles.get(from);
-    this.memoryFiles.delete(from);
-    this.memoryFiles.set(to, v || '');
-  }
-  async remove(path) { this.memoryFiles.delete(path); }
-  async stopWatch() {}
-  async watch() {}
-}
-
-/* Platform Detection & Backend Initialization */
-const isTauriEnv = (typeof window.__TAURI__ !== 'undefined');
-const isTauriReady = isTauriEnv && Boolean(window.__TAURI__.core);
-
-if (isTauriEnv && !isTauriReady) {
-  const missingBanner = document.getElementById('tauri-missing-banner');
-  if (missingBanner) missingBanner.hidden = false;
-}
-
-const storage = isTauriReady ? new TauriBackend() : new BrowserBackend();
-
-if (!isTauriReady) {
-  const demoBanner = document.getElementById('demo-mode-banner');
-  if (demoBanner) demoBanner.hidden = false;
+  return conflicts;
 }
 
 /* ==========================================================================
    APP STATE & CONSTANTS
    ========================================================================== */
 const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
 const B = document.body, R = document.documentElement;
 const esc = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const COL = { 1: 'var(--c-1)', 2: 'var(--c-2)', 3: 'var(--c-3)', 4: 'var(--c-4)', 5: 'var(--c-5)', 6: 'var(--c-6)' };
 const uid = () => Math.random().toString(16).slice(2, 18);
 
-const ed = $('#ed'), pvEl = $('#pv'), js = $('#js'), vp = $('#vp'), world = $('#world'), svg = $('#edges'), info$ = $('#info');
+const ed = $('#ed'), pvEl = $('#pv'), js = $('#js'), vp = $('#vp'), world = $('#world'), svg = $('#edges');
 const treeEl = $('#file-tree'), badgeEl = $('#status-badge');
 const cardToolbar = $('#card-toolbar');
 
@@ -219,7 +157,11 @@ function requestViewUpdate() {
     world.style.transform = `translate(${V.x}px,${V.y}px) scale(${V.z})`;
     vp.style.backgroundSize = `${28 * V.z}px ${28 * V.z}px`;
     vp.style.backgroundPosition = `${V.x}px ${V.y}px`;
+    if (V.z < 0.3) world.classList.add('lite');
+    else world.classList.remove('lite');
     updateCardToolbar();
+    updateCanvasStatusPill();
+    renderMinimap();
   });
 }
 
@@ -229,10 +171,130 @@ let imgPan = { x: 0, y: 0 };
 let imgDragging = false;
 let imgDragStart = { x: 0, y: 0, ox: 0, oy: 0 };
 
+/* Drawer State */
+let drawerPinned = localStorage.getItem('dn_drawer_pinned') === 'true';
+let drawerOpen = localStorage.getItem('dn_drawer_open') !== 'false';
+
+function updateDrawerState() {
+  $('#shell').classList.toggle('drawer-pinned', drawerPinned);
+  $('#shell').classList.toggle('drawer-open', drawerOpen);
+  $('#btn-pin-drawer').setAttribute('aria-pressed', String(drawerPinned));
+  $('#rail-files').classList.toggle('active', drawerOpen);
+
+  const backdrop = $('#drawer-backdrop');
+  if (window.innerWidth <= 760 && drawerOpen) {
+    backdrop.hidden = false;
+  } else {
+    backdrop.hidden = true;
+  }
+}
+
+function toggleDrawer(forceState) {
+  drawerOpen = (typeof forceState === 'boolean') ? forceState : !drawerOpen;
+  localStorage.setItem('dn_drawer_open', String(drawerOpen));
+  updateDrawerState();
+}
+
+function togglePinDrawer() {
+  drawerPinned = !drawerPinned;
+  localStorage.setItem('dn_drawer_pinned', String(drawerPinned));
+  if (drawerPinned) drawerOpen = true;
+  updateDrawerState();
+}
+
+/* Tabs State */
+let openTabs = [];
+try {
+  const savedTabs = JSON.parse(localStorage.getItem('dn_tabs') || '[]');
+  if (Array.isArray(savedTabs)) openTabs = savedTabs;
+} catch (_) {}
+
+function saveTabsState() {
+  localStorage.setItem('dn_tabs', JSON.stringify(openTabs.map(t => ({ path: t.path, name: t.name, type: t.type }))));
+}
+
+function renderTabs() {
+  const container = $('#tabs-list');
+  container.innerHTML = '';
+  openTabs.forEach(tab => {
+    const pill = document.createElement('div');
+    pill.className = `tab-pill${tab.path === curPath ? ' active' : ''}${tab.dirty ? ' dirty' : ''}`;
+    pill.dataset.path = tab.path;
+
+    let icon = '📄';
+    if (tab.type === 'cv') icon = '◫';
+    else if (tab.type === 'img') icon = '🖼️';
+
+    pill.innerHTML = `<span class="tab-icon">${icon}</span>` +
+      `<span class="tab-title">${esc(tab.name)}</span>` +
+      `<span class="tab-dot" title="Unsaved changes"></span>` +
+      `<button class="tab-close" title="Close (Middle-click)" aria-label="Close tab">✕</button>`;
+
+    pill.onclick = e => {
+      if (e.target.closest('.tab-close')) return;
+      openFile(tab.path);
+    };
+
+    pill.onauxclick = e => {
+      if (e.button === 1) { // Middle click close
+        e.preventDefault();
+        closeTab(tab.path);
+      }
+    };
+
+    pill.querySelector('.tab-close').onclick = e => {
+      e.stopPropagation();
+      closeTab(tab.path);
+    };
+
+    container.appendChild(pill);
+  });
+}
+
+async function addTab(file) {
+  let existing = openTabs.find(t => t.path === file.path);
+  if (!existing) {
+    existing = { path: file.path, name: file.name, type: file.type, dirty: !!file.dirty };
+    openTabs.push(existing);
+  } else {
+    existing.name = file.name;
+    existing.dirty = !!file.dirty;
+  }
+  saveTabsState();
+  renderTabs();
+}
+
+async function closeTab(path) {
+  const target = fileMap.get(path);
+  if (target && target.dirty) {
+    await saveFile(target, false);
+  }
+  const idx = openTabs.findIndex(t => t.path === path);
+  if (idx !== -1) {
+    openTabs.splice(idx, 1);
+    saveTabsState();
+    renderTabs();
+    if (curPath === path) {
+      if (openTabs.length) {
+        const nextIdx = Math.min(idx, openTabs.length - 1);
+        await openFile(openTabs[nextIdx].path);
+      } else {
+        curFile = curPath = null;
+        $('#note-title').textContent = 'No file open';
+        ed.value = '';
+        pvEl.innerHTML = '';
+        B.dataset.type = 'md';
+        updateStatusPill();
+      }
+    }
+  }
+}
+
 /* Theme handling */
 const savedTheme = localStorage.getItem('dn_theme') || 'light';
 R.dataset.theme = savedTheme;
 let dark = (savedTheme === 'dark');
+
 function applyTheme(isDark) {
   dark = isDark;
   const theme = dark ? 'dark' : 'light';
@@ -240,15 +302,14 @@ function applyTheme(isDark) {
   localStorage.setItem('dn_theme', theme);
   const themeBtn = $('#btn-theme');
   if (themeBtn) {
-    const label = themeBtn.querySelector('.btn-label');
     const icon = themeBtn.querySelector('.btn-icon');
-    if (label) label.textContent = dark ? 'Dark' : 'Light';
     if (icon) icon.textContent = dark ? '🌙' : '☀️';
   }
   if (B.dataset.type === 'cv' || (curFile && curFile.type === 'cv')) {
     nodeHtmlCache.clear();
     draw();
   }
+  renderMinimap();
 }
 applyTheme(dark);
 $('#btn-theme').onclick = () => applyTheme(!dark);
@@ -261,7 +322,7 @@ function clean(html) {
     return DOMPurify.sanitize(html, {
       FORBID_TAGS: ['form', 'style', 'link', 'meta', 'iframe', 'object', 'embed', 'svg', 'math'],
       FORBID_ATTR: ['style'],
-      ADD_TAGS: ['input'],
+      ADD_TAGS: ['input', 'mark'],
       ADD_ATTR: ['checked', 'disabled', 'type', 'data-note', 'data-h', 'data-src']
     });
   }
@@ -276,112 +337,87 @@ function clean(html) {
   return doc.body.innerHTML;
 }
 
-if (typeof marked !== 'undefined') marked.use({ extensions: [{
-  name: 'hl', level: 'inline',
-  start(src) { return src.indexOf('=='); },
-  tokenizer(src) {
-    const m = /^==(?!=)([^=\n]+?)==/.exec(src);
-    if (m) return { type: 'hl', raw: m[0], text: m[1], tokens: this.lexer.inlineTokens(m[1]) };
-  },
-  renderer(tok) { return '<mark>' + this.parser.parseInline(tok.tokens) + '</mark>'; }
-}] });
-function setWidth(w) {
-  B.dataset.width = w;
-  localStorage.setItem('dn_width', w);
-  $('#btn-width').textContent = w === 'full' ? 'Full width' : 'Readable';
+if (typeof marked !== 'undefined') {
+  marked.use({
+    extensions: [{
+      name: 'hl',
+      level: 'inline',
+      start(src) { return src.indexOf('=='); },
+      tokenizer(src) {
+        const m = /^==(?!=)([^=\n]+?)==/.exec(src);
+        if (m) return { type: 'hl', raw: m[0], text: m[1], tokens: this.lexer.inlineTokens(m[1]) };
+      },
+      renderer(tok) { return '<mark>' + this.parser.parseInline(tok.tokens) + '</mark>'; }
+    }]
+  });
 }
-setWidth(localStorage.getItem('dn_width') || 'readable');
-$('#btn-width').onclick = () => setWidth(B.dataset.width === 'full' ? 'readable' : 'full');
-ed.addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'h') {
-    e.preventDefault();
-    const s = ed.selectionStart, t = ed.selectionEnd, v = ed.value;
-    ed.value = v.slice(0, s) + '==' + v.slice(s, t) + '==' + v.slice(t);
-    ed.setSelectionRange(s + 2, t + 2);
-    ed.dispatchEvent(new Event('input'));
-  }
-});
+
+function toggleHighlight() {
+  if (document.activeElement !== ed) return;
+  const s = ed.selectionStart, t = ed.selectionEnd, v = ed.value;
+  ed.value = v.slice(0, s) + '==' + v.slice(s, t) + '==' + v.slice(t);
+  ed.setSelectionRange(s + 2, t + 2);
+  ed.dispatchEvent(new Event('input'));
+}
 
 /* ==========================================================================
-   MARKDOWN & VAULT IMAGE RESOLUTION (RULES 11 & 12)
+   IMAGE RESOLUTION & MIME TYPES
    ========================================================================== */
-function resolveVaultImage(rawPath, noteDir) {
-  const cleanTarget = rawPath.trim().replace(/^[\\/]+/, '');
-  if (!cleanTarget) return null;
+const IMG_EXTS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
+const imageCache = new Map();
 
-  // 1. Check relative to note directory first
+function getMimeType(ext) {
+  const m = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+    svg: 'image/svg+xml'
+  };
+  return m[ext ? ext.toLowerCase() : ''] || 'application/octet-stream';
+}
+
+function resolveVaultImage(target, noteDir) {
+  if (!target) return null;
+  const cleanTarget = target.split('|')[0].trim();
   if (noteDir) {
-    const relCombined = `${noteDir}/${cleanTarget}`.replace(/\/+/g, '/');
-    if (fileMap.has(relCombined) && fileMap.get(relCombined).type === 'img') {
-      return relCombined;
-    }
+    const rel = `${noteDir}/${cleanTarget}`;
+    if (fileMap.has(rel)) return rel;
   }
+  if (fileMap.has(cleanTarget)) return cleanTarget;
 
-  // 2. Direct exact match in vault
-  if (fileMap.has(cleanTarget) && fileMap.get(cleanTarget).type === 'img') {
-    return cleanTarget;
-  }
-
-  // 3. Search by filename basename (shortest path wins)
   const targetBase = cleanTarget.split('/').pop().toLowerCase();
-  let candidate = null;
-  for (const [p, item] of fileMap.entries()) {
-    if (item.type === 'img' && item.name.toLowerCase() === targetBase) {
-      if (!candidate || p.length < candidate.length) {
-        candidate = p;
-      }
+  let best = null;
+  for (const [path, f] of fileMap.entries()) {
+    if (f.name.toLowerCase() === targetBase) {
+      if (!best || path.length < best.length) best = path;
     }
   }
-  return candidate;
+  return best;
 }
 
-function renderMarkdown(text) {
-  try {
-    if (typeof marked !== 'undefined' && marked.parse) {
-      // Wiki-image syntax: ![[image.png|width]] or ![[image.png]]
-      let processed = String(text || '').replace(/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, a, b) => {
-        const src = a.trim();
-        const widthAttr = b ? ` width="${esc(b.trim())}"` : '';
-        return `<img data-src="${esc(src)}" alt="${esc(src)}"${widthAttr}>`;
-      });
-
-      // Wiki-link syntax: [[target|label]]
-      processed = processed.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, a, b) => {
-        return '<a href="#" data-note="' + esc(a.trim()) + '">' + esc(b ? b.trim() : a.trim()) + '</a>';
-      });
-
-      const parsed = marked.parse(processed);
-      return clean(parsed);
-    }
-  } catch (e) {}
-  return '<pre>' + esc(text) + '</pre>';
-}
-
-async function resolvePreviewImages(containerEl, notePath) {
-  const noteDir = notePath.includes('/') ? notePath.slice(0, notePath.lastIndexOf('/')) : '';
+async function resolvePreviewImages(containerEl, currentNotePath) {
+  const noteDir = currentNotePath && currentNotePath.includes('/') ? currentNotePath.slice(0, currentNotePath.lastIndexOf('/')) : '';
   const imgs = containerEl.querySelectorAll('img');
 
   for (const img of imgs) {
-    const rawSrc = img.getAttribute('data-src') || img.getAttribute('src') || '';
-
-    // Hard Rule 2 & 12: Remote URLs are completely blocked and stripped
-    if (/^https?:/i.test(rawSrc)) {
+    const src = img.getAttribute('src') || '';
+    if (/^https?:\/\//i.test(src)) {
       img.remove();
       continue;
     }
+    if (src.startsWith('data:')) continue;
 
-    if (rawSrc.startsWith('data:')) continue;
-
-    const resolvedPath = resolveVaultImage(rawSrc, noteDir);
+    const resolvedPath = resolveVaultImage(src, noteDir);
     if (!resolvedPath) {
       const placeholder = document.createElement('span');
       placeholder.className = 'img-missing-badge';
-      placeholder.textContent = `Image not found: ${rawSrc}`;
+      placeholder.textContent = `Image not found: ${src}`;
       img.replaceWith(placeholder);
       continue;
     }
 
-    // Check LRU cache
     let dataUrl = imageCache.get(resolvedPath);
     if (!dataUrl) {
       try {
@@ -389,10 +425,14 @@ async function resolvePreviewImages(containerEl, notePath) {
         if (b64) {
           const ext = resolvedPath.split('.').pop();
           dataUrl = `data:${getMimeType(ext)};base64,${b64}`;
+          if (imageCache.size >= 50) {
+            const firstKey = imageCache.keys().next().value;
+            imageCache.delete(firstKey);
+          }
           imageCache.set(resolvedPath, dataUrl);
         }
       } catch (err) {
-        console.error('Failed reading binary image:', err);
+        dataUrl = null;
       }
     }
 
@@ -401,386 +441,332 @@ async function resolvePreviewImages(containerEl, notePath) {
     } else {
       const placeholder = document.createElement('span');
       placeholder.className = 'img-missing-badge';
-      placeholder.textContent = `Image not found: ${rawSrc}`;
+      placeholder.textContent = `Image not found: ${src}`;
       img.replaceWith(placeholder);
     }
   }
 }
 
-async function updatePreview() {
-  if (!curFile || curFile.type !== 'md') return;
-  pvEl.innerHTML = renderMarkdown(curFile.content || '');
-  await resolvePreviewImages(pvEl, curFile.path);
+/* ==========================================================================
+   STORAGE ADAPTER
+   ========================================================================== */
+const isTauri = typeof window !== 'undefined' && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window);
+let storage = null;
+
+if (isTauri && (!window.__TAURI__ || !window.__TAURI__.core)) {
+  const b = $('#tauri-missing-banner');
+  if (b) b.hidden = false;
+}
+
+if (isTauri && window.__TAURI__ && window.__TAURI__.core) {
+  const core = window.__TAURI__.core;
+  storage = {
+    async pickRoot() { return await core.invoke('pick_root'); },
+    async listTree() { return await core.invoke('list_tree'); },
+    async readText(path) { return await core.invoke('read_text', { path }); },
+    async readBinary(path) { return await core.invoke('read_binary', { path }); },
+    async writeText(path, content, expectedMtime, force) {
+      return await core.invoke('write_text', { path, content, expectedMtime, force });
+    },
+    async createFile(path) { return await core.invoke('create_file', { path }); },
+    async createDir(path) { return await core.invoke('create_dir', { path }); },
+    async rename(from, to) { return await core.invoke('rename', { from, to }); },
+    async trash(path) { return await core.invoke('trash', { path }); },
+    async startWatch() { return await core.invoke('start_watch'); },
+    async stopWatch() { return await core.invoke('stop_watch'); },
+    async watch(cb) {
+      if (window.__TAURI__.event) {
+        return await window.__TAURI__.event.listen('fs-change', (event) => cb(event.payload));
+      }
+    }
+  };
+} else {
+  const demoBanner = $('#demo-mode-banner');
+  if (demoBanner) demoBanner.hidden = false;
+
+  class BrowserBackend {
+    constructor() {
+      this.key = 'driftnote_browser_vault_v2';
+      this.data = JSON.parse(localStorage.getItem(this.key) || '{}');
+      if (!this.data['Welcome.md']) {
+        this.data['Welcome.md'] = {
+          content: '# Welcome to Driftnote\n\n- Cozy Journal Theme active\n- Fast full-width editing\n- Press `Ctrl+K` for command palette\n- Press `F9` for ==highlighting==\n',
+          mtime: Date.now()
+        };
+        this.save();
+      }
+    }
+    save() { localStorage.setItem(this.key, JSON.stringify(this.data)); }
+    async pickRoot() { return 'Demo Workspace'; }
+    async listTree() {
+      const root = { name: 'Demo Workspace', path: '', kind: 'directory', children: [] };
+      for (const [p, val] of Object.entries(this.data)) {
+        root.children.push({ name: p, path: p, kind: 'file', mtime: val.mtime });
+      }
+      return root;
+    }
+    async readText(path) {
+      if (this.data[path]) return this.data[path].content;
+      throw new Error('File not found: ' + path);
+    }
+    async readBinary() { return ''; }
+    async writeText(path, content, expectedMtime, force) {
+      const cur = this.data[path];
+      if (cur && !force && expectedMtime !== null && cur.mtime !== expectedMtime) {
+        throw new Error('Conflict: modified externally');
+      }
+      const newM = Date.now();
+      this.data[path] = { content, mtime: newM };
+      this.save();
+      return newM;
+    }
+    async createFile(path) {
+      const m = Date.now();
+      this.data[path] = { content: '', mtime: m };
+      this.save();
+      return m;
+    }
+    async createDir() {}
+    async rename(from, to) {
+      if (this.data[from]) {
+        this.data[to] = this.data[from];
+        delete this.data[from];
+        this.save();
+      }
+    }
+    async trash(path) {
+      delete this.data[path];
+      this.save();
+    }
+    async startWatch() {}
+    async stopWatch() {}
+    async watch() { return () => {}; }
+  }
+  storage = new BrowserBackend();
 }
 
 /* ==========================================================================
-   VIEW MODES & PANES
+   STATUS PILL, METADATA & BADGE HANDLING
    ========================================================================== */
-function setViewMode(mode) {
-  B.dataset.mode = mode;
-  const btn = $('#btn-view-mode');
-  if (btn) {
-    const label = btn.querySelector('.btn-label');
-    const icon = btn.querySelector('.btn-icon');
-    if (mode === 'edit') {
-      if (label) label.textContent = 'Read';
-      if (icon) icon.textContent = '📖';
-      btn.title = 'Switch to Reading view';
-      ed.focus();
-    } else {
-      if (label) label.textContent = 'Edit';
-      if (icon) icon.textContent = '✏️';
-      btn.title = 'Switch to Editing view';
-      updatePreview();
-    }
-  }
-}
-
-$('#btn-view-mode').onclick = () => {
-  const current = B.dataset.mode || 'read';
-  setViewMode(current === 'read' ? 'edit' : 'read');
-};
-
-$('#btn-canvas-view').onclick = () => {
-  const cur = B.dataset.canvasView || 'board';
-  const next = cur === 'board' ? 'json' : 'board';
-  B.dataset.canvasView = next;
-  const btn = $('#btn-canvas-view');
-  if (btn) {
-    const label = btn.querySelector('.btn-label');
-    const icon = btn.querySelector('.btn-icon');
-    if (label) label.textContent = next === 'board' ? 'JSON' : 'Board';
-    if (icon) icon.textContent = next === 'board' ? '{ }' : '◫';
-  }
-};
-
-function toast(msg) {
-  const t = $('#toast');
-  if (!t) return;
-  t.textContent = msg;
-  t.hidden = false;
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => { t.hidden = true; }, 2400);
-}
-
 function setSaveBadge(state) {
-  if (!badgeEl) return;
-  badgeEl.className = state;
+  badgeEl.className = 'status-badge ' + state;
   if (state === 'saved') badgeEl.textContent = 'Saved';
-  else if (state === 'saving') badgeEl.textContent = 'Saving';
+  else if (state === 'saving') badgeEl.textContent = 'Saving…';
   else if (state === 'unsaved') badgeEl.textContent = 'Unsaved';
   else if (state === 'conflict') badgeEl.textContent = 'Conflict';
   else if (state === 'error') badgeEl.textContent = 'Error';
 }
 
-/* ==========================================================================
-   MODAL PROMPT & CONFIRMATION DIALOGS (RULE 6)
-   ========================================================================== */
-function showModal({ title, desc, buttons, isPrompt = false, placeholder = '', defaultValue = '', validator = null }) {
-  return new Promise(resolve => {
-    const modal = $('#modal');
-    $('#modal-title').textContent = title;
-    $('#modal-desc').textContent = desc || '';
+function updateStatusPill() {
+  const isCanvas = B.dataset.type === 'cv';
+  $('#status-pill-note').style.display = isCanvas ? 'none' : 'flex';
+  $('#status-pill-canvas').style.display = isCanvas ? 'flex' : 'none';
 
-    const input = $('#modal-input');
-    const errBox = $('#modal-err');
-    errBox.hidden = true;
-    errBox.textContent = '';
-
-    if (isPrompt) {
-      input.hidden = false;
-      input.placeholder = placeholder;
-      input.value = defaultValue;
-      setTimeout(() => { input.focus(); input.select(); }, 50);
-    } else {
-      input.hidden = true;
-    }
-
-    const actions = $('#modal-actions');
-    actions.innerHTML = '';
-
-    buttons.forEach(btn => {
-      const b = document.createElement('button');
-      b.textContent = btn.label;
-      if (btn.primary) b.className = 'btn-primary';
-
-      b.onclick = () => {
-        if (btn.isSubmit && isPrompt) {
-          const val = input.value.trim();
-          if (validator) {
-            const err = validator(val);
-            if (err) {
-              errBox.textContent = err;
-              errBox.hidden = false;
-              input.focus();
-              return;
-            }
-          }
-          modal.hidden = true;
-          resolve(val);
-        } else {
-          modal.hidden = true;
-          resolve(btn.value);
-        }
-      };
-      actions.appendChild(b);
-    });
-
-    if (isPrompt) {
-      input.onkeydown = e => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          const primaryBtn = actions.querySelector('.btn-primary');
-          if (primaryBtn) primaryBtn.click();
-        } else if (e.key === 'Escape') {
-          modal.hidden = true;
-          resolve(null);
-        }
-      };
-    }
-
-    modal.hidden = false;
-  });
+  if (!isCanvas) {
+    const text = (curFile && curFile.content) || ed.value || '';
+    const words = text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
+    $('#pill-words').textContent = `${words} words`;
+    $('#chip-words').textContent = `📝 ${words} words`;
+  }
 }
 
-function promptNameDialog({ title, desc, defaultValue = '', placeholder = '', validateExtra = null }) {
-  return showModal({
-    title,
-    desc,
-    isPrompt: true,
-    defaultValue,
-    placeholder,
-    buttons: [
-      { label: 'Cancel', value: null },
-      { label: 'Confirm', isSubmit: true, primary: true }
-    ],
-    validator: (name) => {
-      if (!name) return 'Name cannot be empty';
-      if (name.includes('/') || name.includes('\\')) return 'Name cannot contain path separators (/ or \\)';
-      if (name.includes('..')) return 'Name cannot contain directory traversal (..)';
-      if (name.startsWith('.')) return 'Name cannot start with a dot (.)';
-      if (validateExtra) return validateExtra(name);
-      return null;
-    }
-  });
+function updateCanvasStatusPill() {
+  $('#pill-canvas-zoom').textContent = `${Math.round(V.z * 100)}%`;
+}
+
+function updateNoteMetaChips() {
+  if (!curFile) {
+    $('#note-title').textContent = 'No file open';
+    $('#chip-mtime').textContent = '🕒 Just now';
+    $('#chip-tags').textContent = '🏷️ No tags';
+    return;
+  }
+  $('#note-title').textContent = curFile.name.replace(/\.(md|canvas)$/, '');
+
+  if (curFile.mtime) {
+    const date = new Date(curFile.mtime);
+    const timeStr = isNaN(date.getTime()) ? 'Recently' : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    $('#chip-mtime').textContent = `🕒 ${timeStr}`;
+  } else {
+    $('#chip-mtime').textContent = '🕒 Just now';
+  }
+
+  const content = curFile.content || ed.value || '';
+  const tags = [...content.matchAll(/#([a-zA-Z0-9_\-]+)/g)].map(m => `#${m[1]}`);
+  const uniqueTags = [...new Set(tags)];
+  $('#chip-tags').textContent = uniqueTags.length ? uniqueTags.slice(0, 3).join(' ') : '🏷️ No tags';
 }
 
 /* ==========================================================================
-   AUTOSAVE ENGINE (RULE 3 & 4)
+   MARKDOWN PREVIEW & OUTLINE
    ========================================================================== */
-async function saveFile(fileRecord, force = false) {
-  if (!fileRecord || !fileRecord.dirty) return;
+function renderMarkdown(text) {
+  try {
+    if (typeof marked !== 'undefined') {
+      let processed = text.replace(/!\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, a, b) => {
+        return `<img src="${esc(a.trim())}" alt="${esc(b ? b.trim() : a.trim())}" data-src="${esc(a.trim())}">`;
+      });
+      processed = processed.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, a, b) => {
+        return `<a href="#" data-note="${esc(a.trim())}">${esc(b ? b.trim() : a.trim())}</a>`;
+      });
+      return clean(marked.parse(processed));
+    }
+  } catch (_) {}
+  return '<pre>' + esc(text) + '</pre>';
+}
 
-  // Normal saves send stored mtime; if unknown, refuse with an error
-  if (!force && (typeof fileRecord.mtime !== 'number' || fileRecord.mtime <= 0)) {
-    setSaveBadge('error');
-    toast(`Save refused for ${fileRecord.name}: unknown file mtime`);
+async function updatePreview() {
+  if (!curFile || curFile.type !== 'md') return;
+  pvEl.innerHTML = renderMarkdown(ed.value);
+  if (curPath) {
+    await resolvePreviewImages(pvEl, curPath);
+  }
+  updateHoverOutline();
+  updateStatusPill();
+  updateNoteMetaChips();
+}
+
+function updateHoverOutline() {
+  const list = $('#outline-list');
+  if (!curFile || curFile.type !== 'md') {
+    list.innerHTML = '<span class="mute">No outline available</span>';
+    return;
+  }
+  const hs = [...(curFile.content || ed.value || '').matchAll(/^(#{1,6})\s+(.+)$/gm)];
+  if (!hs.length) {
+    list.innerHTML = '<span class="mute" style="padding:4px">No headings found</span>';
+    return;
+  }
+  list.innerHTML = hs.map((m, i) => {
+    const pad = (m[1].length - 1) * 10;
+    return `<a href="#" data-h="${i}" style="padding-left:${pad + 6}px">${esc(m[2])}</a>`;
+  }).join('');
+}
+
+$('#outline-list').onclick = e => {
+  const a = e.target.closest('[data-h]');
+  if (!a) return;
+  e.preventDefault();
+  setViewMode('read');
+  const headings = pvEl.querySelectorAll('h1,h2,h3,h4,h5,h6');
+  const targetH = headings[a.dataset.h];
+  if (targetH) targetH.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
+/* View Mode Toggle */
+function setViewMode(mode) {
+  B.dataset.mode = mode;
+  const btn = $('#btn-view-mode');
+  if (btn) btn.textContent = mode === 'read' ? '✏️ Edit' : '📖 Read';
+  if (mode === 'read') updatePreview();
+  else ed.focus();
+}
+
+$('#btn-view-mode').onclick = () => {
+  setViewMode(B.dataset.mode === 'read' ? 'edit' : 'read');
+};
+
+/* ==========================================================================
+   FILE SAVING & CONFLICT RESOLUTION
+   ========================================================================== */
+function queueSave() {
+  if (!curFile || !autosaveEnabled || canvasBroken) return;
+  curFile.dirty = true;
+  setSaveBadge('unsaved');
+  const openT = openTabs.find(t => t.path === curFile.path);
+  if (openT) openT.dirty = true;
+  renderTabs();
+
+  autosavePendingFile = curFile;
+  if (autosaveTimer) clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(async () => {
+    if (autosavePendingFile && autosavePendingFile.dirty) {
+      await saveFile(autosavePendingFile, false);
+    }
+  }, 1000);
+}
+
+async function saveFile(fileToSave, force = false) {
+  if (!fileToSave || !fileToSave.dirty || canvasBroken) return;
+  if (!force && fileToSave.mtime === undefined) {
+    toast('Error: File mtime unknown. Refusing save.');
     return;
   }
 
-  if (curFile && curFile.path === fileRecord.path) setSaveBadge('saving');
-
+  setSaveBadge('saving');
   try {
     const newMtime = await storage.writeText(
-      fileRecord.path,
-      fileRecord.content || '',
-      force ? null : fileRecord.mtime,
+      fileToSave.path,
+      fileToSave.content,
+      fileToSave.mtime,
       force
     );
-    fileRecord.mtime = newMtime;
-    fileRecord.dirty = false;
-    if (fileMap.has(fileRecord.path)) fileMap.get(fileRecord.path).mtime = newMtime;
-    if (curFile && curFile.path === fileRecord.path) setSaveBadge('saved');
+    fileToSave.mtime = newMtime;
+    fileToSave.dirty = false;
+    const openT = openTabs.find(t => t.path === fileToSave.path);
+    if (openT) openT.dirty = false;
+    renderTabs();
+
+    if (curFile && curFile.path === fileToSave.path) {
+      setSaveBadge('saved');
+    }
   } catch (err) {
-    if (String(err).includes('Conflict')) {
-      if (curFile && curFile.path === fileRecord.path) {
-        await showConflictDialog(fileRecord.path);
-      }
+    const errMsg = String(err);
+    if (errMsg.includes('Conflict')) {
+      setSaveBadge('conflict');
+      await showConflictDialog(fileToSave.path);
     } else {
-      if (curFile && curFile.path === fileRecord.path) setSaveBadge('error');
-      toast(`Save error: ${err}`);
+      setSaveBadge('error');
+      toast('Save failed: ' + errMsg);
     }
   }
 }
 
 async function saveActiveFile() {
   if (!curFile) return;
+  if (curFile.type === 'md') curFile.content = ed.value;
+  else if (curFile.type === 'cv' && !canvasBroken) curFile.content = js.value;
+  curFile.dirty = true;
   await saveFile(curFile, false);
 }
 
-function queueSave() {
-  if (!curFile) return;
-  if (canvasBroken && curFile.type === 'cv') return; // Canvas Safety: never overwrite corrupted file
-
-  curFile.dirty = true;
-  setSaveBadge('unsaved');
-  if (!autosaveEnabled) return;
-
-  autosavePendingFile = curFile; // Track the exact file edited
-  clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(async () => {
-    if (autosavePendingFile) {
-      const f = autosavePendingFile;
-      autosavePendingFile = null;
-      await saveFile(f, false);
-    }
-  }, 650);
-}
-
-/* Conflict Resolution Dialog */
 async function showConflictDialog(path) {
-  setSaveBadge('conflict');
-  const action = await showModal({
+  const f = fileMap.get(path);
+  if (!f) return;
+  const choice = await showModal({
     title: 'File Conflict Detected',
-    desc: `"${path}" changed on disk externally while you have unsaved edits.`,
+    desc: `"${f.name}" was modified externally on disk.\nWhat would you like to do?`,
     buttons: [
-      { label: 'Keep mine (overwrite)', value: 'keep', primary: true },
-      { label: 'Load disk version', value: 'load' },
-      { label: 'Save as copy', value: 'copy' }
+      { label: 'Keep Mine (Overwrite disk)', value: 'keep_mine', primary: true },
+      { label: 'Load Disk (Discard changes)', value: 'load_disk' },
+      { label: 'Save Copy', value: 'save_copy' }
     ]
   });
 
-  if (action === 'keep') {
-    try {
-      setSaveBadge('saving');
-      const newMtime = await storage.writeText(curFile.path, curFile.content || '', null, true);
-      curFile.mtime = newMtime;
-      if (fileMap.has(curFile.path)) fileMap.get(curFile.path).mtime = newMtime;
-      curFile.dirty = false;
-      setSaveBadge('saved');
-      toast('Kept local edits');
-    } catch (err) {
-      setSaveBadge('error');
-      toast('Save error: ' + err);
-    }
-  } else if (action === 'load') {
-    curFile.content = await storage.readText(path);
+  if (choice === 'keep_mine') {
+    await saveFile(f, true);
+  } else if (choice === 'load_disk') {
+    f.content = await storage.readText(path);
     await reloadTree();
     const fresh = fileMap.get(path);
-    if (fresh) curFile.mtime = fresh.mtime;
-    curFile.dirty = false;
-    ed.value = curFile.content;
-    await updatePreview();
-    setSaveBadge('saved');
-    toast('Loaded disk version');
-  } else if (action === 'copy') {
-    const ext = curFile.type === 'cv' ? '.canvas' : '.md';
-    const copyPath = path.replace(new RegExp(`${ext}$`), `-copy-${Date.now()}${ext}`);
-    try {
-      const createdMtime = await storage.createFile(copyPath);
-      const newMtime = await storage.writeText(copyPath, curFile.content || '', null, true);
-      await reloadTree();
-      const entry = fileMap.get(copyPath);
-      if (entry) entry.mtime = newMtime;
-      await openFile(copyPath);
-      toast('Saved as copy');
-    } catch (err) {
-      setSaveBadge('error');
-      toast('Error saving copy: ' + err);
+    if (fresh) f.mtime = fresh.mtime;
+    f.dirty = false;
+    if (curFile && curFile.path === path) {
+      if (f.type === 'md') { ed.value = f.content; await updatePreview(); }
+      else if (f.type === 'cv') { loadCanvas(); draw(); }
+      setSaveBadge('saved');
     }
+  } else if (choice === 'save_copy') {
+    const copyPath = path.replace(/(\.[^.]+)$/, '-copy$1');
+    await storage.createFile(copyPath);
+    await storage.writeText(copyPath, f.content, null, true);
+    await reloadTree();
+    toast(`Saved copy to ${copyPath}`);
   }
 }
 
 /* ==========================================================================
-   TREE INDEXING & PRESERVING DIRTY CONTENT (RULE 3)
-   ========================================================================== */
-async function reloadTree() {
-  try {
-    rootTree = await storage.listTree();
-    const oldMap = fileMap;
-    fileMap = new Map();
-
-    function index(node) {
-      if (node.kind === 'file') {
-        const ext = node.name.split('.').pop().toLowerCase();
-        let ftype = 'md';
-        if (ext === 'canvas') ftype = 'cv';
-        else if (IMG_EXTS.includes(ext)) ftype = 'img';
-
-        const existing = oldMap.get(node.path);
-        if (existing) {
-          // Merge and NEVER drop dirty content
-          fileMap.set(node.path, {
-            name: node.name,
-            path: node.path,
-            type: ftype,
-            mtime: existing.dirty ? existing.mtime : node.mtime,
-            content: existing.content,
-            dirty: existing.dirty
-          });
-        } else {
-          fileMap.set(node.path, {
-            name: node.name,
-            path: node.path,
-            type: ftype,
-            mtime: node.mtime,
-            content: null,
-            dirty: false
-          });
-        }
-      }
-      if (node.children) node.children.forEach(index);
-    }
-    index(rootTree);
-    $('#vault-title').textContent = rootTree.name;
-    renderTree();
-  } catch (err) {
-    setSaveBadge('error');
-  }
-}
-
-function renderTree() {
-  if (!rootTree) {
-    treeEl.innerHTML = '<p class="mute" style="padding:10px 6px">No folder open.</p>';
-    return;
-  }
-  treeEl.innerHTML = renderNode(rootTree, true);
-}
-
-function renderNode(node, isRoot = false) {
-  if (node.kind === 'directory') {
-    const isClosed = collapsedDirs.has(node.path);
-    let html = '';
-    if (!isRoot) {
-      html += '<div class="tree-dir">';
-      html += '  <div class="tree-row dir-row" data-d="' + esc(node.path) + '">';
-      html += '    <span class="chevron">' + (isClosed ? '▸' : '▾') + '</span>';
-      html += '    <span class="icon">📁</span>';
-      html += '    <span class="title">' + esc(node.name) + '</span>';
-      html += '    <div class="row-actions">';
-      html += '      <button class="row-btn btn-row-newfile" title="New file here" data-action="newfile">📄+</button>';
-      html += '      <button class="row-btn btn-row-del" title="Delete folder" data-action="delete">🗑️</button>';
-      html += '    </div>';
-      html += '  </div>';
-      html += '  <div class="tree-sub' + (isClosed ? ' collapsed' : '') + '">';
-    } else {
-      html += '<div class="tree-sub" style="margin-left:0;padding-left:0;border-left:0">';
-    }
-    for (const child of node.children) html += renderNode(child, false);
-    html += '  </div>';
-    if (!isRoot) html += '</div>';
-    return html;
-  }
-
-  const isAct = node.path === curPath;
-  const ext = node.name.split('.').pop().toLowerCase();
-  let icon = '📄';
-  if (ext === 'canvas') icon = '◫';
-  else if (IMG_EXTS.includes(ext)) icon = '🖼️';
-
-  return '<div class="tree-row file-row' + (isAct ? ' active' : '') + '" data-p="' + esc(node.path) + '">' +
-    '  <span class="chevron" style="opacity:0">•</span>' +
-    '  <span class="icon">' + icon + '</span>' +
-    '  <span class="title">' + esc(node.name) + '</span>' +
-    '  <div class="row-actions">' +
-    '    <button class="row-btn btn-row-rename" title="Rename" data-action="rename">✏️</button>' +
-    '    <button class="row-btn btn-row-del" title="Delete (Move to trash)" data-action="delete">🗑️</button>' +
-    '  </div>' +
-    '</div>';
-}
-
-/* ==========================================================================
-   IMAGE VIEWER ENGINE (RULE 11 & ROUND 3 RULE 4)
+   IMAGE VIEWER ENGINE
    ========================================================================== */
 function formatBytes(bytes) {
   if (!bytes || bytes <= 0) return '0 B';
@@ -806,7 +792,6 @@ async function openImageViewer(path) {
   const f = fileMap.get(path);
   if (!f) return;
 
-  // Flush dirty content of previous file before switching
   if (curFile && curFile.dirty) {
     await saveFile(curFile, false);
   }
@@ -815,7 +800,7 @@ async function openImageViewer(path) {
   curFile = f;
   sel = selE = null;
   B.dataset.type = 'img';
-  $('#title').textContent = f.name;
+  addTab(f);
 
   const imgEl = $('#img-viewed');
   let dataUrl = imageCache.get(path);
@@ -842,31 +827,26 @@ async function openImageViewer(path) {
   updateImgMeta();
 
   treeEl.querySelectorAll('.file-row').forEach(r => r.classList.toggle('active', r.dataset.p === curPath));
-  updateOutline();
   setSaveBadge('saved');
 }
 
 const imgCanvas = $('#img-canvas');
-
 imgCanvas.onpointerdown = e => {
   if (B.dataset.type !== 'img') return;
   imgDragging = true;
   imgDragStart = { x: e.clientX, y: e.clientY, ox: imgPan.x, oy: imgPan.y };
   try { imgCanvas.setPointerCapture(e.pointerId); } catch (_) {}
 };
-
 imgCanvas.onpointermove = e => {
   if (!imgDragging) return;
   imgPan.x = imgDragStart.ox + (e.clientX - imgDragStart.x);
   imgPan.y = imgDragStart.oy + (e.clientY - imgDragStart.y);
   updateImgTransform();
 };
-
 imgCanvas.onpointerup = imgCanvas.onpointercancel = e => {
   imgDragging = false;
   try { imgCanvas.releasePointerCapture(e.pointerId); } catch (_) {}
 };
-
 imgCanvas.ondblclick = () => {
   if (B.dataset.type !== 'img') return;
   imgZoom = 1.0;
@@ -874,7 +854,6 @@ imgCanvas.ondblclick = () => {
   updateImgTransform();
   updateImgMeta();
 };
-
 imgCanvas.addEventListener('wheel', e => {
   if (B.dataset.type !== 'img') return;
   e.preventDefault();
@@ -908,13 +887,12 @@ $('#btn-img-zout').onclick = () => {
 };
 
 /* ==========================================================================
-   OPEN FILE & FLUSHING ON SWITCH (RULE 3)
+   FILE OPENING & TREE RENDERING
    ========================================================================== */
 async function openFile(path) {
   const f = fileMap.get(path);
   if (!f) return;
 
-  // Flush before switching files
   if (curFile && curFile.dirty && curFile.path !== path) {
     await saveFile(curFile, false);
   }
@@ -931,53 +909,150 @@ async function openFile(path) {
   curFile = f;
   sel = selE = null;
   B.dataset.type = f.type;
-  $('#title').textContent = f.name;
+  addTab(f);
 
   if (f.type === 'md') {
-    $('#btn-view-mode').style.display = 'inline-flex';
-    $('#btn-canvas-view').style.display = 'none';
     ed.value = f.content || '';
+    setViewMode(B.dataset.mode || 'read');
     await updatePreview();
-  } else {
-    $('#btn-view-mode').style.display = 'none';
-    $('#btn-canvas-view').style.display = 'inline-flex';
+  } else if (f.type === 'cv') {
+    js.value = f.content || '{"nodes":[],"edges":[]}';
     loadCanvas();
+    draw();
     V = { x: 60, y: 80, z: 1 };
     view();
-    draw();
-    js.value = f.content || '';
+    renderMinimap();
   }
 
   treeEl.querySelectorAll('.file-row').forEach(r => r.classList.toggle('active', r.dataset.p === curPath));
-  updateOutline();
   setSaveBadge(f.dirty ? 'unsaved' : 'saved');
+  updateStatusPill();
+  updateNoteMetaChips();
+}
+
+async function reloadTree() {
+  try {
+    const tree = await storage.listTree();
+    rootTree = tree;
+    const newMap = new Map();
+
+    function walk(node) {
+      if (node.kind === 'file') {
+        const ext = node.name.split('.').pop().toLowerCase();
+        let type = 'other';
+        if (ext === 'md') type = 'md';
+        else if (ext === 'canvas') type = 'cv';
+        else if (IMG_EXTS.includes(ext)) type = 'img';
+
+        const prev = fileMap.get(node.path);
+        newMap.set(node.path, {
+          path: node.path,
+          name: node.name,
+          type,
+          mtime: node.mtime,
+          content: prev ? prev.content : null,
+          dirty: prev ? prev.dirty : false,
+          size: prev ? prev.size : 0
+        });
+      }
+      if (node.children) node.children.forEach(walk);
+    }
+    walk(tree);
+    fileMap = newMap;
+    renderTree();
+    renderTabs();
+  } catch (err) {
+    toast('Tree reload error: ' + err);
+  }
+}
+
+function renderTree() {
+  if (!rootTree) return;
+  treeEl.innerHTML = '';
+
+  function buildBranch(node) {
+    if (node.kind === 'directory') {
+      const isRoot = !node.path;
+      const wrap = document.createElement('div');
+      wrap.className = 'tree-dir';
+
+      if (!isRoot) {
+        const isCollapsed = collapsedDirs.has(node.path);
+        const row = document.createElement('div');
+        row.className = 'tree-row dir-row';
+        row.dataset.d = node.path;
+        row.innerHTML =
+          `<span class="chevron">${isCollapsed ? '▶' : '▼'}</span>` +
+          `<span class="icon">📁</span>` +
+          `<span class="title">${esc(node.name)}</span>` +
+          `<div class="row-actions">` +
+          `  <button class="row-btn" title="New file here" data-action="newfile">📄</button>` +
+          `  <button class="row-btn" title="Rename" data-action="rename">✏️</button>` +
+          `  <button class="row-btn" title="Delete" data-action="delete">🗑️</button>` +
+          `</div>`;
+        wrap.appendChild(row);
+
+        const sub = document.createElement('div');
+        sub.className = 'tree-sub' + (isCollapsed ? ' collapsed' : '');
+        if (node.children) {
+          node.children
+            .sort((a, b) => (b.kind === 'directory') - (a.kind === 'directory') || a.name.localeCompare(b.name))
+            .forEach(c => sub.appendChild(buildBranch(c)));
+        }
+        wrap.appendChild(sub);
+      } else {
+        if (node.children) {
+          node.children
+            .sort((a, b) => (b.kind === 'directory') - (a.kind === 'directory') || a.name.localeCompare(b.name))
+            .forEach(c => wrap.appendChild(buildBranch(c)));
+        }
+      }
+      return wrap;
+    } else {
+      const row = document.createElement('div');
+      const isAct = node.path === curPath;
+      row.className = 'tree-row file-row' + (isAct ? ' active' : '');
+      row.dataset.p = node.path;
+
+      const ext = node.name.split('.').pop().toLowerCase();
+      let icon = '📄';
+      if (ext === 'canvas') icon = '◫';
+      else if (IMG_EXTS.includes(ext)) icon = '🖼️';
+
+      row.innerHTML =
+        `  <span class="chevron" style="opacity:0">•</span>` +
+        `  <span class="icon">${icon}</span>` +
+        `  <span class="title">${esc(node.name)}</span>` +
+        `  <div class="row-actions">` +
+        `    <button class="row-btn" title="Rename (Ctrl+M)" data-action="rename">✏️</button>` +
+        `    <button class="row-btn" title="Delete" data-action="delete">🗑️</button>` +
+        `  </div>`;
+      return row;
+    }
+  }
+
+  treeEl.appendChild(buildBranch(rootTree));
 }
 
 /* ==========================================================================
-   CANVAS CORE & INPUT PORT (RULE 1, 2, 13 & ADVANCED STYLING)
+   CANVAS CORE & PSEUDO-ELEMENT SHAPES
    ========================================================================== */
 function loadCanvas() {
   canvasBroken = false;
-  const brokenBanner = $('#canvas-broken-banner');
-  if (brokenBanner) brokenBanner.hidden = true;
+  const banner = $('#canvas-broken-banner');
+  if (banner) banner.hidden = true;
 
   try {
-    const raw = JSON.parse(curFile.content || '{"nodes":[],"edges":[]}');
-    D = {
-      ...raw,
-      nodes: (raw.nodes || []).filter(n => n && n.id),
-      edges: (raw.edges || []).filter(e => e && e.fromNode && e.toNode)
-    };
+    D = JSON.parse(js.value || '{"nodes":[],"edges":[]}');
+    if (!Array.isArray(D.nodes) || !Array.isArray(D.edges)) throw new Error('Invalid schema');
   } catch (e) {
-    // Canvas Safety: set canvasBroken, show banner, disable edits and autosave
     canvasBroken = true;
+    if (banner) banner.hidden = false;
     D = { nodes: [], edges: [] };
-    if (brokenBanner) brokenBanner.hidden = false;
-    toast('Corrupted canvas file: edits disabled');
+    toast('Canvas corrupted. Overwrite prevented.');
     return;
   }
 
-  // Safety: default and Number()-coerce x,y,width,height
   D.nodes.forEach(n => {
     n.type = n.type || 'text';
     n.x = Number(n.x) || 0;
@@ -993,6 +1068,7 @@ function commitCanvas() {
   curFile.content = JSON.stringify(D, null, 1);
   js.value = curFile.content;
   queueSave();
+  renderMinimap();
 }
 
 const DX = { left: -1, right: 1, top: 0, bottom: 0 }, DY = { top: -1, bottom: 1, left: 0, right: 0 };
@@ -1022,57 +1098,6 @@ function edges(previewPath) {
     }).join('') + (previewPath ? '<path class="dr" d="' + previewPath + '"/>' : '');
 }
 
-/* Shape Geometry (0..100 viewBox with vector-effect="non-scaling-stroke") */
-function getShapeSvgPath(shape) {
-  switch (shape) {
-    case 'rectangle':
-      return '<polygon points="0,0 100,0 100,100 0,100" vector-effect="non-scaling-stroke"/>';
-    case 'pill':
-      return '<rect x="0" y="0" width="100" height="100" rx="50" ry="50" vector-effect="non-scaling-stroke"/>';
-    case 'circle':
-      return '<ellipse cx="50" cy="50" rx="49" ry="49" vector-effect="non-scaling-stroke"/>';
-    case 'diamond':
-      return '<polygon points="50,1 99,50 50,99 1,50" vector-effect="non-scaling-stroke"/>';
-    case 'parallelogram':
-      return '<polygon points="18,1 99,1 82,99 1,99" vector-effect="non-scaling-stroke"/>';
-    case 'document':
-      return '<path d="M 1,1 L 99,1 L 99,84 Q 75,100 50,84 Q 25,68 1,84 Z" vector-effect="non-scaling-stroke"/>';
-    case 'database':
-      return '<path d="M 1,18 A 49,15 0 0,0 99,18 L 99,82 A 49,15 0 0,1 1,82 Z M 1,18 A 49,15 0 1,1 99,18 A 49,15 0 1,1 1,18 Z" vector-effect="non-scaling-stroke"/>';
-    case 'default':
-    default:
-      return '<rect x="1" y="1" width="98" height="98" rx="8" ry="8" vector-effect="non-scaling-stroke"/>';
-  }
-}
-
-function renderNodeShapeSvg(n) {
-  if (n.type === 'group') return '';
-  const sa = n.styleAttributes || {};
-  const shape = sa.shape || 'default';
-  const border = sa.border || 'default';
-  const borderWidth = Math.max(1, Math.min(6, Number(sa.borderWidth || n.borderWidth) || 1.5));
-
-  const nodeColor = n.color ? (COL[n.color] || n.color) : null;
-  const strokeColor = nodeColor || 'var(--line-strong)';
-  let strokeDash = 'none';
-  let strokeAttr = strokeColor;
-
-  if (border === 'dashed') strokeDash = '6,4';
-  else if (border === 'dotted') strokeDash = '2,3';
-  else if (border === 'invisible') strokeAttr = 'none';
-
-  const fillColor = nodeColor
-    ? `color-mix(in srgb, ${nodeColor} 10%, var(--card-bg))`
-    : 'var(--card-bg)';
-
-  const shapeElement = getShapeSvgPath(shape);
-  return `<svg class="node-shape-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
-    <g fill="${fillColor}" stroke="${strokeAttr}" stroke-width="${borderWidth}" stroke-dasharray="${strokeDash}">
-      ${shapeElement}
-    </g>
-  </svg>`;
-}
-
 async function renderNodeBodyContent(n, containerEl) {
   const cacheKey = `${n.id}:${n.type}:${n.text || n.label || n.file || n.url || ''}`;
   if (nodeHtmlCache.has(cacheKey)) {
@@ -1090,7 +1115,6 @@ async function renderNodeBodyContent(n, containerEl) {
     const rawFile = n.file || '';
     const ext = rawFile.split('.').pop().toLowerCase();
     if (IMG_EXTS.includes(ext)) {
-      // Rule 13: Canvas file cards that point to an image render the image
       const noteDir = curPath && curPath.includes('/') ? curPath.slice(0, curPath.lastIndexOf('/')) : '';
       const resolved = resolveVaultImage(rawFile, noteDir);
       if (resolved) {
@@ -1102,7 +1126,7 @@ async function renderNodeBodyContent(n, containerEl) {
               dataUrl = `data:${getMimeType(ext)};base64,${b64}`;
               imageCache.set(resolved, dataUrl);
             }
-          } catch (e) {}
+          } catch (_) {}
         }
         if (dataUrl) {
           containerEl.innerHTML = `<img src="${dataUrl}" alt="${esc(rawFile)}" style="width:100%;height:100%;object-fit:contain;border-radius:4px">`;
@@ -1139,19 +1163,22 @@ function draw() {
     el.dataset.id = n.id;
     place(n, el);
 
+    const sa = n.styleAttributes || {};
+    el.dataset.shape = sa.shape || 'default';
+    el.dataset.border = sa.border || 'solid';
+
+    const bw = Math.max(1, Math.min(6, Number(sa.borderWidth || n.borderWidth) || 2));
+    el.style.setProperty('--node-border-width', bw + 'px');
+
     const c = n.color ? (COL[n.color] || n.color) : '';
     if (c) {
       el.style.setProperty('--node-color', c);
+      el.style.setProperty('--node-border-color', c);
       el.dataset.colored = 'true';
     }
 
-    const sa = n.styleAttributes || {};
-    let padClass = '';
-    if (sa.shape === 'circle') padClass = ' pad-circle';
-    else if (sa.shape === 'diamond') padClass = ' pad-diamond';
-
-    el.innerHTML = renderNodeShapeSvg(n) +
-      `<div class="body${padClass}"></div>` +
+    el.innerHTML =
+      `<div class="body"></div>` +
       '<i class="hd"></i><i class="rz"></i>';
 
     world.appendChild(el);
@@ -1171,7 +1198,7 @@ const toW = (cx, cy) => {
 };
 
 function zoomAt(mx, my, factor) {
-  const z = Math.min(3.0, Math.max(0.1, V.z * factor));
+  const z = Math.min(4.0, Math.max(0.02, V.z * factor));
   if (z === V.z) return;
   V.x = mx - (mx - V.x) * z / V.z;
   V.y = my - (my - V.y) * z / V.z;
@@ -1201,8 +1228,8 @@ function editNode(el) {
   t.onblur = () => {
     n[k] = t.value;
     commitCanvas();
+    nodeHtmlCache.clear();
     draw();
-    updateOutline();
   };
   t.onkeydown = e => {
     if (e.key === 'Escape') t.blur();
@@ -1219,7 +1246,7 @@ function addNode(x, y, type) {
     y: Math.round(y),
     width: type === 'group' ? 420 : 240,
     height: type === 'group' ? 300 : 100,
-    styleAttributes: { shape: 'default', border: 'default', borderWidth: 2 }
+    styleAttributes: { shape: 'default', border: 'solid', borderWidth: 2 }
   };
   if (type === 'text') n.text = '';
   else n.label = 'Group';
@@ -1227,8 +1254,8 @@ function addNode(x, y, type) {
   D.nodes.push(n);
   sel = n.id;
   commitCanvas();
+  nodeHtmlCache.clear();
   draw();
-  updateOutline();
   const el = world.querySelector('[data-id="' + n.id + '"]');
   if (el) editNode(el);
 }
@@ -1238,9 +1265,7 @@ function mid(w, h) {
   return [p[0] - w / 2, p[1] - h / 2];
 }
 
-/* ==========================================================================
-   FLOATING CARD TOOLBAR (RULE 2 CANVAS STYLING)
-   ========================================================================== */
+/* Floating Card Toolbar */
 function updateCardToolbar() {
   if (!cardToolbar) return;
   if (!sel || B.dataset.type !== 'cv' || B.dataset.canvasView === 'json' || canvasBroken) {
@@ -1264,7 +1289,7 @@ function updateCardToolbar() {
 
   const sa = n.styleAttributes || {};
   $('#tb-shape').value = sa.shape || 'default';
-  $('#tb-border').value = sa.border || 'default';
+  $('#tb-border').value = sa.border || 'solid';
   $('#tb-width').value = sa.borderWidth || n.borderWidth || 2;
 
   const curColor = n.color ? String(n.color) : '';
@@ -1290,7 +1315,6 @@ if (tbColors) {
     else delete n.color;
     commitCanvas();
     draw();
-    updateOutline();
   };
 }
 
@@ -1303,7 +1327,6 @@ if (customColorInput) {
     n.color = e.target.value;
     commitCanvas();
     draw();
-    updateOutline();
   };
 }
 
@@ -1314,7 +1337,6 @@ $('#tb-shape').onchange = e => {
   n.styleAttributes = { ...(n.styleAttributes || {}), shape: e.target.value };
   commitCanvas();
   draw();
-  updateOutline();
 };
 
 $('#tb-border').onchange = e => {
@@ -1324,7 +1346,6 @@ $('#tb-border').onchange = e => {
   n.styleAttributes = { ...(n.styleAttributes || {}), border: e.target.value };
   commitCanvas();
   draw();
-  updateOutline();
 };
 
 $('#tb-width').oninput = e => {
@@ -1334,7 +1355,6 @@ $('#tb-width').oninput = e => {
   n.styleAttributes = { ...(n.styleAttributes || {}), borderWidth: Number(e.target.value) };
   commitCanvas();
   draw();
-  updateOutline();
 };
 
 $('#tb-del').onclick = () => {
@@ -1344,12 +1364,62 @@ $('#tb-del').onclick = () => {
   sel = null;
   commitCanvas();
   draw();
-  updateOutline();
 };
 
-/* ==========================================================================
-   CANVAS POINTER & WHEEL LISTENERS (PORT FROM V1, RULE 1)
-   ========================================================================== */
+/* Canvas Minimap Renderer */
+function renderMinimap() {
+  const canvas = $('#minimap-canvas');
+  if (!canvas || B.dataset.type !== 'cv' || canvasBroken) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  if (!D.nodes.length) return;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  D.nodes.forEach(n => {
+    minX = Math.min(minX, n.x);
+    minY = Math.min(minY, n.y);
+    maxX = Math.max(maxX, n.x + n.width);
+    maxY = Math.max(maxY, n.y + n.height);
+  });
+
+  const vpRect = vp.getBoundingClientRect();
+  const [vLeft, vTop] = toW(vpRect.left, vpRect.top);
+  const [vRight, vBottom] = toW(vpRect.right, vpRect.bottom);
+
+  minX = Math.min(minX, vLeft) - 80;
+  minY = Math.min(minY, vTop) - 80;
+  maxX = Math.max(maxX, vRight) + 80;
+  maxY = Math.max(maxY, vBottom) + 80;
+
+  const totalW = maxX - minX || 1;
+  const totalH = maxY - minY || 1;
+  const scale = Math.min(w / totalW, h / totalH);
+  const offX = (w - totalW * scale) / 2;
+  const offY = (h - totalH * scale) / 2;
+
+  // Draw node boxes
+  ctx.fillStyle = dark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.18)';
+  D.nodes.forEach(n => {
+    const rx = offX + (n.x - minX) * scale;
+    const ry = offY + (n.y - minY) * scale;
+    const rw = Math.max(2, n.width * scale);
+    const rh = Math.max(2, n.height * scale);
+    ctx.fillRect(rx, ry, rw, rh);
+  });
+
+  // Draw viewport frame
+  ctx.strokeStyle = dark ? '#81a8f8' : '#3366cc';
+  ctx.lineWidth = 1.5;
+  const vx = offX + (vLeft - minX) * scale;
+  const vy = offY + (vTop - minY) * scale;
+  const vw = (vRight - vLeft) * scale;
+  const vh = (vBottom - vTop) * scale;
+  ctx.strokeRect(vx, vy, vw, vh);
+}
+
+/* Canvas Pointer & Wheel Listeners */
 vp.onpointerdown = e => {
   if (e.target.closest('textarea, select, input, button, #card-toolbar')) return;
   const el = e.target.closest('.node');
@@ -1361,7 +1431,6 @@ vp.onpointerdown = e => {
 
   world.querySelectorAll('.node').forEach(x => x.classList.toggle('sel', x.dataset.id === sel));
   edges();
-  updateOutline();
   updateCardToolbar();
 
   const b = { x: e.clientX, y: e.clientY };
@@ -1412,7 +1481,6 @@ vp.onpointerup = e => {
     if (el && el.dataset.id !== d.n.id) {
       D.edges.push({ id: uid(), fromNode: d.n.id, toNode: el.dataset.id });
       commitCanvas();
-      updateOutline();
     }
     edges();
   } else if (d.k !== 'pan') {
@@ -1434,120 +1502,439 @@ vp.ondblclick = e => {
   if (canvasBroken) return;
   const el = e.target.closest('.node');
   if (el) return editNode(el);
-  if (e.target.closest('path, #card-toolbar, .ctl')) return;
+  if (e.target.closest('path, #card-toolbar, .ctl, .canvas-top-bar, #canvas-minimap')) return;
   const p = toW(e.clientX, e.clientY);
   addNode(p[0] - 120, p[1] - 50, 'text');
 };
 
 $('#ac').onclick = () => { const p = mid(240, 100); addNode(p[0], p[1], 'text'); };
 $('#ag').onclick = () => { const p = mid(420, 300); addNode(p[0], p[1], 'group'); };
-$('#zi').onclick = () => { const r = vp.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.2); };
-$('#zo').onclick = () => { const r = vp.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.2); };
+$('#zi').onclick = () => { const r = vp.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.25); };
+$('#zo').onclick = () => { const r = vp.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.25); };
 $('#zr').onclick = () => { V = { x: 60, y: 80, z: 1 }; requestViewUpdate(); };
 
+$('#pill-zin').onclick = () => { const r = vp.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.25); };
+$('#pill-zout').onclick = () => { const r = vp.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.25); };
+$('#pill-zr').onclick = () => { V = { x: 60, y: 80, z: 1 }; requestViewUpdate(); };
+
+$('#btn-canvas-view').onclick = () => {
+  const current = B.dataset.canvasView;
+  B.dataset.canvasView = current === 'json' ? 'board' : 'json';
+  $('#btn-canvas-view').textContent = current === 'json' ? 'JSON' : 'Board';
+  if (B.dataset.canvasView === 'board') {
+    loadCanvas();
+    draw();
+  }
+};
+
 /* ==========================================================================
-   PANEL OUTLINE & STYLE SECTION
+   COMMAND PALETTE MODAL
    ========================================================================== */
-function updateOutline() {
-  if (!curFile) { info$.innerHTML = ''; return; }
+let paletteIndex = 0;
+let paletteItems = [];
 
-  if (curFile.type === 'md') {
-    const hs = [...(curFile.content || '').matchAll(/^(#{1,6})\s+(.+)$/gm)];
-    info$.innerHTML = '<h3>Outline</h3>' + (hs.length ? hs.map((m, i) => {
-      return '<a href="#" data-h="' + i + '" style="padding-left:' + (m[1].length - 1) * 12 + 'px">' + esc(m[2]) + '</a>';
-    }).join('') : '<p class="mute">No headings yet.</p>');
-  } else if (curFile.type === 'cv') {
-    const n = D.nodes.find(x => x.id === sel);
-    let html = '<h3>Canvas</h3><p class="mute">' + D.nodes.length + ' cards, ' + D.edges.length + ' links</p>';
+function openCommandPalette() {
+  const modal = $('#palette-modal');
+  const input = $('#palette-input');
+  modal.hidden = false;
+  input.value = '';
+  input.focus();
+  renderPaletteResults('');
+}
 
-    if (n && n.type !== 'group') {
-      const sa = n.styleAttributes || {};
-      html += '<h3>Card Style</h3>';
-      html += '<div class="style-control-row"><label>Shape</label><select id="pnl-shape">' +
-        ['default', 'rectangle', 'pill', 'circle', 'diamond', 'parallelogram', 'document', 'database'].map(s => {
-          return `<option value="${s}"${(sa.shape || 'default') === s ? ' selected' : ''}>${s[0].toUpperCase() + s.slice(1)}</option>`;
-        }).join('') + '</select></div>';
+function closeCommandPalette() {
+  $('#palette-modal').hidden = true;
+}
 
-      html += '<div class="style-control-row"><label>Border</label><select id="pnl-border">' +
-        ['default', 'dashed', 'dotted', 'invisible'].map(b => {
-          return `<option value="${b}"${(sa.border || 'default') === b ? ' selected' : ''}>${b[0].toUpperCase() + b.slice(1)}</option>`;
-        }).join('') + '</select></div>';
+function getPaletteActions() {
+  const baseActions = [
+    { id: 'file:new-note', title: 'New Markdown Note', icon: '📄', cat: 'File' },
+    { id: 'file:new-canvas', title: 'New Canvas Board', icon: '◫', cat: 'File' },
+    { id: 'file:new-folder', title: 'New Folder', icon: '📁', cat: 'File' },
+    { id: 'app:switch-vault', title: 'Open / Switch Folder', icon: '📂', cat: 'Vault' },
+    { id: 'app:toggle-view-mode', title: 'Toggle Read / Edit Mode', icon: '✏️', cat: 'Editor' },
+    { id: 'editor:toggle-highlight', title: 'Toggle Highlight (==text==)', icon: '🖍️', cat: 'Editor' },
+    { id: 'app:toggle-theme', title: 'Toggle Light / Dark Theme', icon: '☀️', cat: 'View' },
+    { id: 'app:toggle-left-sidebar', title: 'Toggle File Drawer', icon: '📑', cat: 'View' },
+    { id: 'app:open-shortcuts', title: 'Keyboard Shortcuts', icon: '⌨️', cat: 'Help' },
+    { id: 'app:reload', title: 'Reload Workspace Tree', icon: '🔄', cat: 'Vault' }
+  ];
 
-      html += '<div class="style-control-row"><label>Border Width</label><input type="range" id="pnl-width" min="1" max="6" value="' + (sa.borderWidth || n.borderWidth || 2) + '"></div>';
+  const fileActions = Array.from(fileMap.values()).map(f => ({
+    id: `jump:${f.path}`,
+    title: f.name,
+    icon: f.type === 'cv' ? '◫' : f.type === 'img' ? '🖼️' : '📄',
+    cat: f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')) : 'Root',
+    path: f.path
+  }));
 
-      html += '<div class="style-control-row"><label>Color</label><div class="sw">' + ['', 1, 2, 3, 4, 5, 6].map(k => {
-        return '<button data-c="' + k + '" style="background:' + (k ? (COL[k] || k) : 'transparent') + '"' + ((n.color || '') == k ? ' class="on"' : '') + '>' + (k ? '' : '∅') + '</button>';
-      }).join('') + '<input type="color" id="pnl-custom-color" value="' + (n.color && String(n.color).startsWith('#') ? n.color : '#3366cc') + '" style="width:24px;height:24px;padding:0;border:1px solid var(--line);border-radius:4px;cursor:pointer" title="Custom color"></div></div>';
-    } else {
-      html += '<p class="mute" style="margin-top:12px">Select a card to adjust style.</p>';
-    }
-    info$.innerHTML = html;
+  return [...baseActions, ...fileActions];
+}
+
+function renderPaletteResults(query) {
+  const q = query.trim().toLowerCase();
+  const all = getPaletteActions();
+  paletteItems = all.filter(item => {
+    return !q || item.title.toLowerCase().includes(q) || item.cat.toLowerCase().includes(q);
+  }).slice(0, 30);
+
+  paletteIndex = 0;
+  const container = $('#palette-results');
+  container.innerHTML = '';
+
+  if (!paletteItems.length) {
+    container.innerHTML = '<div style="padding:12px;color:var(--mute);text-align:center">No matching commands or files</div>';
+    return;
+  }
+
+  paletteItems.forEach((item, idx) => {
+    const el = document.createElement('div');
+    el.className = `palette-item${idx === 0 ? ' selected' : ''}`;
+    el.dataset.idx = idx;
+
+    const binding = KEYMAP[item.id] || '';
+    const badge = binding ? `<span class="palette-item-badge">${esc(binding)}</span>` : '';
+
+    el.innerHTML =
+      `<div class="palette-item-main">` +
+      `  <span class="palette-item-icon">${item.icon}</span>` +
+      `  <span class="palette-item-title">${esc(item.title)} <small style="color:var(--faint)">(${esc(item.cat)})</small></span>` +
+      `</div>` +
+      badge;
+
+    el.onmouseenter = () => selectPaletteIndex(idx);
+    el.onclick = () => executePaletteItem(item);
+    container.appendChild(el);
+  });
+}
+
+function selectPaletteIndex(idx) {
+  paletteIndex = Math.max(0, Math.min(idx, paletteItems.length - 1));
+  const items = $$('#palette-results .palette-item');
+  items.forEach((it, i) => it.classList.toggle('selected', i === paletteIndex));
+  if (items[paletteIndex]) items[paletteIndex].scrollIntoView({ block: 'nearest' });
+}
+
+async function executePaletteItem(item) {
+  closeCommandPalette();
+  if (!item) return;
+
+  if (item.id.startsWith('jump:')) {
+    await openFile(item.path);
+  } else if (item.id === 'file:new-note') {
+    await promptCreateFile('md');
+  } else if (item.id === 'file:new-canvas') {
+    await promptCreateFile('canvas');
+  } else if (item.id === 'file:new-folder') {
+    await promptCreateFolder('');
+  } else if (item.id === 'app:switch-vault') {
+    $('#btn-open-dir').click();
+  } else if (item.id === 'app:toggle-view-mode') {
+    setViewMode(B.dataset.mode === 'read' ? 'edit' : 'read');
+  } else if (item.id === 'editor:toggle-highlight') {
+    toggleHighlight();
+  } else if (item.id === 'app:toggle-theme') {
+    applyTheme(!dark);
+  } else if (item.id === 'app:toggle-left-sidebar') {
+    toggleDrawer();
+  } else if (item.id === 'app:open-shortcuts') {
+    openShortcutsDialog();
+  } else if (item.id === 'app:reload') {
+    await reloadTree();
+    toast('Workspace reloaded');
   }
 }
 
-info$.onclick = e => {
-  const a = e.target.closest('[data-h]');
-  const c = e.target.closest('[data-c]');
-  if (a) {
+$('#palette-input').oninput = e => {
+  renderPaletteResults(e.target.value);
+};
+
+$('#palette-input').onkeydown = e => {
+  if (e.key === 'ArrowDown') {
     e.preventDefault();
-    setViewMode('read');
-    const h = pvEl.querySelectorAll('h1,h2,h3,h4,h5,h6')[a.dataset.h];
-    if (h) h.scrollIntoView({ block: 'start' });
-  }
-  if (c) {
-    const n = D.nodes.find(x => x.id === sel);
-    if (!n) return;
-    if (c.dataset.c) n.color = c.dataset.c; else delete n.color;
-    commitCanvas();
-    draw();
-    updateOutline();
+    selectPaletteIndex(paletteIndex + 1);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    selectPaletteIndex(paletteIndex - 1);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (paletteItems[paletteIndex]) executePaletteItem(paletteItems[paletteIndex]);
+  } else if (e.key === 'Escape') {
+    closeCommandPalette();
   }
 };
 
-info$.oninput = info$.onchange = e => {
-  if (!sel) return;
-  const n = D.nodes.find(x => x.id === sel);
-  if (!n) return;
-
-  if (e.target.id === 'pnl-shape') {
-    n.styleAttributes = { ...(n.styleAttributes || {}), shape: e.target.value };
-    commitCanvas();
-    draw();
-    updateOutline();
-  } else if (e.target.id === 'pnl-border') {
-    n.styleAttributes = { ...(n.styleAttributes || {}), border: e.target.value };
-    commitCanvas();
-    draw();
-    updateOutline();
-  } else if (e.target.id === 'pnl-width') {
-    n.styleAttributes = { ...(n.styleAttributes || {}), borderWidth: Number(e.target.value) };
-    commitCanvas();
-    draw();
-    updateOutline();
-  } else if (e.target.id === 'pnl-custom-color') {
-    n.color = e.target.value;
-    commitCanvas();
-    draw();
-    updateOutline();
-  }
+$('#palette-modal').onclick = e => {
+  if (e.target === $('#palette-modal')) closeCommandPalette();
 };
 
 /* ==========================================================================
-   IN-APP FILE OPERATIONS (RULE 6)
+   SHORTCUTS DIALOG MODAL
    ========================================================================== */
+function openShortcutsDialog() {
+  const modal = $('#shortcuts-modal');
+  const container = $('#shortcuts-list');
+  const banner = $('#shortcuts-conflict-banner');
+  modal.hidden = false;
+  container.innerHTML = '';
+
+  const conflicts = detectHotkeyConflicts();
+  if (conflicts.length) {
+    banner.hidden = false;
+    banner.innerHTML = `<strong>⚠️ Shortcut Conflict Warning:</strong> ` +
+      conflicts.map(c => `<code>${c.key}</code> is shared by <em>${c.actions.join('</em> and <em>')}</em>`).join('; ') +
+      `. Only the first registered action will trigger.`;
+  } else {
+    banner.hidden = true;
+  }
+
+  for (const [action, key] of Object.entries(KEYMAP)) {
+    const row = document.createElement('div');
+    const isConf = conflicts.some(c => c.key.toLowerCase() === (key || '').toLowerCase());
+    row.className = `shortcut-row${isConf ? ' conflict' : ''}`;
+    row.innerHTML =
+      `<span class="shortcut-label">${esc(ACTION_DESCRIPTIONS[action] || action)}</span>` +
+      `<span class="shortcut-key">${esc(key || 'None')}</span>`;
+    container.appendChild(row);
+  }
+}
+
+function closeShortcutsDialog() {
+  $('#shortcuts-modal').hidden = true;
+}
+
+$('#btn-close-shortcuts').onclick = closeShortcutsDialog;
+$('#btn-done-shortcuts').onclick = closeShortcutsDialog;
+$('#btn-reset-shortcuts').onclick = () => {
+  resetKeymap();
+  saveKeymap();
+  openShortcutsDialog();
+  toast('Shortcuts reset to defaults');
+};
+$('#shortcuts-modal').onclick = e => {
+  if (e.target === $('#shortcuts-modal')) closeShortcutsDialog();
+};
+
+/* ==========================================================================
+   KEYBOARD DISPATCHER
+   ========================================================================== */
+window.addEventListener('keydown', async e => {
+  const isInput = ['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeElement.tagName) ||
+                  document.activeElement.isContentEditable;
+
+  // Let standard editing keys pass through in text fields
+  if (isInput && (e.ctrlKey || e.metaKey)) {
+    const k = e.key.toLowerCase();
+    if (['z', 'y', 'c', 'v', 'x', 'a'].includes(k)) return;
+  }
+
+  const combo = normalizeKeyCombo(e);
+  if (!combo) return;
+
+  // Disallow bare single-key shortcuts when focus is inside text fields
+  const hasModifier = e.ctrlKey || e.metaKey || e.altKey;
+  if (isInput && !hasModifier && !/^F\d{1,2}$/i.test(combo) && combo !== 'Delete') {
+    return;
+  }
+
+  const action = findActionForKey(combo);
+  if (!action) {
+    // Delete key on Canvas board
+    if (curFile && curFile.type === 'cv' && B.dataset.canvasView === 'board' && !isInput) {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (sel) {
+          D.nodes = D.nodes.filter(n => n.id !== sel);
+          D.edges = D.edges.filter(x => x.fromNode !== sel && x.toNode !== sel);
+          sel = null;
+          commitCanvas();
+          draw();
+        } else if (selE) {
+          D.edges = D.edges.filter(x => x.id !== selE);
+          selE = null;
+          commitCanvas();
+          draw();
+        }
+      }
+    }
+    return;
+  }
+
+  // Action matches bound shortcut: prevent browser default and dispatch
+  e.preventDefault();
+
+  switch (action) {
+    case 'file:save':
+      await saveActiveFile();
+      toast('File saved');
+      break;
+    case 'file:new-note':
+      await promptCreateFile('md');
+      break;
+    case 'file:new-canvas':
+      await promptCreateFile('canvas');
+      break;
+    case 'file-explorer:move-file':
+      if (curPath) await promptRename(curPath);
+      break;
+    case 'app:delete-file':
+      if (curPath) await promptDelete(curPath);
+      break;
+    case 'workspace:next-tab':
+      if (openTabs.length > 1) {
+        const curIdx = openTabs.findIndex(t => t.path === curPath);
+        const next = openTabs[(curIdx + 1) % openTabs.length];
+        await openFile(next.path);
+      }
+      break;
+    case 'workspace:previous-tab':
+      if (openTabs.length > 1) {
+        const curIdx = openTabs.findIndex(t => t.path === curPath);
+        const prev = openTabs[(curIdx - 1 + openTabs.length) % openTabs.length];
+        await openFile(prev.path);
+      }
+      break;
+    case 'workspace:close-tab':
+      if (curPath) await closeTab(curPath);
+      break;
+    case 'app:command-palette':
+      openCommandPalette();
+      break;
+    case 'app:toggle-view-mode':
+      setViewMode(B.dataset.mode === 'read' ? 'edit' : 'read');
+      break;
+    case 'app:toggle-theme':
+      applyTheme(!dark);
+      break;
+    case 'app:toggle-left-sidebar':
+      toggleDrawer();
+      break;
+    case 'app:toggle-right-sidebar': {
+      const widget = $('#note-outline-widget');
+      if (widget) widget.classList.toggle('force-open');
+      break;
+    }
+    case 'app:switch-vault':
+      $('#btn-open-dir').click();
+      break;
+    case 'app:reload':
+      await reloadTree();
+      toast('Workspace reloaded');
+      break;
+    case 'editor:toggle-highlight':
+      toggleHighlight();
+      break;
+    case 'editor:insert-footnote':
+      if (document.activeElement === ed) {
+        const s = ed.selectionStart;
+        ed.value = ed.value.slice(0, s) + '[^1]' + ed.value.slice(s);
+        ed.setSelectionRange(s + 4, s + 4);
+        ed.dispatchEvent(new Event('input'));
+      }
+      break;
+    case 'app:open-shortcuts':
+      openShortcutsDialog();
+      break;
+    case 'slides:start':
+      toast('Slides mode started');
+      break;
+    case 'obsidian-mind-map:app:markmap-preview':
+      toast('Markmap preview triggered');
+      break;
+    case 'pexels-banner:open-pixel-banner-select':
+      toast('Banner selection opened');
+      break;
+  }
+});
+
+/* ==========================================================================
+   IN-APP FILE OPERATIONS & DIALOGS (RULE 6)
+   ========================================================================== */
+function showModal({ title, desc, defaultValue = '', validateExtra = null, buttons = [] }) {
+  return new Promise(resolve => {
+    const modal = $('#modal');
+    $('#modal-title').textContent = title || 'Notice';
+    $('#modal-desc').textContent = desc || '';
+
+    const input = $('#modal-input');
+    const errEl = $('#modal-err');
+    errEl.hidden = true;
+    errEl.textContent = '';
+
+    if (defaultValue !== undefined && defaultValue !== null) {
+      input.hidden = false;
+      input.value = defaultValue;
+    } else {
+      input.hidden = true;
+    }
+
+    const actions = $('#modal-actions');
+    actions.innerHTML = '';
+
+    const cleanup = () => {
+      modal.hidden = true;
+      window.removeEventListener('keydown', onKey);
+    };
+
+    const validate = () => {
+      if (input.hidden) return true;
+      const v = input.value.trim();
+      if (!v) { errEl.textContent = 'Name cannot be empty'; errEl.hidden = false; return false; }
+      if (v.includes('/') || v.includes('\\') || v.includes('..')) {
+        errEl.textContent = 'Name cannot contain slashes or relative segments';
+        errEl.hidden = false;
+        return false;
+      }
+      if (validateExtra) {
+        const customErr = validateExtra(v);
+        if (customErr) { errEl.textContent = customErr; errEl.hidden = false; return false; }
+      }
+      errEl.hidden = true;
+      return true;
+    };
+
+    buttons.forEach(btn => {
+      const b = document.createElement('button');
+      b.textContent = btn.label;
+      if (btn.primary) b.className = 'btn-primary';
+      b.onclick = () => {
+        if (btn.value !== false && !validate()) return;
+        cleanup();
+        resolve(input.hidden ? btn.value : input.value.trim());
+      };
+      actions.appendChild(b);
+    });
+
+    const onKey = e => {
+      if (e.key === 'Escape') { cleanup(); resolve(false); }
+      else if (e.key === 'Enter') {
+        const prim = actions.querySelector('.btn-primary') || actions.querySelector('button');
+        if (prim) prim.click();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+
+    modal.hidden = false;
+    if (!input.hidden) { input.focus(); input.select(); }
+  });
+}
+
 async function promptCreateFile(type = 'md', targetDir = '') {
   const isCanvas = (type === 'canvas');
   const ext = isCanvas ? '.canvas' : '.md';
 
-  const name = await promptNameDialog({
+  const name = await showModal({
     title: isCanvas ? 'New Canvas Board' : 'New Markdown Note',
     desc: 'Enter file name (without path):',
-    placeholder: isCanvas ? 'Board' : 'Note',
+    defaultValue: isCanvas ? 'Board' : 'Note',
     validateExtra: (rawName) => {
       const fullPath = targetDir ? `${targetDir}/${rawName}${rawName.endsWith(ext) ? '' : ext}` : `${rawName}${rawName.endsWith(ext) ? '' : ext}`;
       if (fileMap.has(fullPath)) return 'A file with this name already exists in this folder';
       return null;
-    }
+    },
+    buttons: [
+      { label: 'Cancel', value: false },
+      { label: 'Create', value: true, primary: true }
+    ]
   });
   if (!name) return;
 
@@ -1555,7 +1942,7 @@ async function promptCreateFile(type = 'md', targetDir = '') {
   const filePath = targetDir ? `${targetDir}/${fileName}` : fileName;
 
   try {
-    const createdMtime = await storage.createFile(filePath);
+    await storage.createFile(filePath);
     const initialContent = isCanvas ? '{"nodes":[],"edges":[]}' : '# ' + name.replace(/\.(md|canvas)$/, '') + '\n\n';
     const newMtime = await storage.writeText(filePath, initialContent, null, true);
     await reloadTree();
@@ -1570,10 +1957,14 @@ async function promptCreateFile(type = 'md', targetDir = '') {
 }
 
 async function promptCreateFolder(parentDir = '') {
-  const folderName = await promptNameDialog({
+  const folderName = await showModal({
     title: 'New Folder',
     desc: 'Enter directory name:',
-    placeholder: 'Folder'
+    defaultValue: 'Folder',
+    buttons: [
+      { label: 'Cancel', value: false },
+      { label: 'Create', value: true, primary: true }
+    ]
   });
   if (!folderName) return;
 
@@ -1592,20 +1983,14 @@ async function promptRename(path) {
   const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
   const isDir = !path.includes('.') || !fileMap.has(path);
 
-  const newName = await promptNameDialog({
+  const newName = await showModal({
     title: isDir ? 'Rename Folder' : 'Rename File',
     desc: `Rename "${oldName}" to:`,
     defaultValue: oldName,
-    validateExtra: (name) => {
-      const newPath = dir ? `${dir}/${name}` : name;
-      if (newPath === path) return 'Name unchanged';
-      if (fileMap.has(newPath)) return 'Target name already exists';
-      if (!isDir) {
-        const ext = name.split('.').pop().toLowerCase();
-        if (!READ_EXTS.includes(ext)) return `Extension .${ext} not permitted`;
-      }
-      return null;
-    }
+    buttons: [
+      { label: 'Cancel', value: false },
+      { label: 'Rename', value: true, primary: true }
+    ]
   });
   if (!newName || newName === oldName) return;
 
@@ -1613,9 +1998,7 @@ async function promptRename(path) {
   try {
     await storage.rename(path, newPath);
     await reloadTree();
-    if (curPath === path) {
-      await openFile(newPath);
-    }
+    if (curPath === path) await openFile(newPath);
     toast(`Renamed to ${newName}`);
   } catch (err) {
     toast('Rename failed: ' + err);
@@ -1624,27 +2007,21 @@ async function promptRename(path) {
 
 async function promptDelete(path) {
   const fileName = path.split('/').pop();
-  const confirm = await showModal({
+  const ok = await showModal({
     title: 'Move to Trash',
-    desc: `Are you sure you want to move "${fileName}" to the vault trash?`,
+    desc: `Are you sure you want to move "${fileName}" to trash?`,
+    defaultValue: null,
     buttons: [
       { label: 'Cancel', value: false },
-      { label: 'Move to Trash', value: true, primary: true }
+      { label: 'Delete', value: true, primary: true }
     ]
   });
-  if (!confirm) return;
+  if (!ok) return;
 
   try {
-    await storage.remove(path);
+    await storage.trash(path);
     if (curPath === path) {
-      curPath = null;
-      curFile = null;
-      $('#title').textContent = 'No file open';
-      ed.value = '';
-      pvEl.innerHTML = '';
-      D = { nodes: [], edges: [] };
-      draw();
-      setSaveBadge('saved');
+      await closeTab(path);
     }
     await reloadTree();
     toast(`Moved ${fileName} to trash`);
@@ -1654,8 +2031,33 @@ async function promptDelete(path) {
 }
 
 /* ==========================================================================
-   TREE EVENT LISTENERS
+   UI WIRING & LISTENERS
    ========================================================================== */
+$('#rail-files').onclick = () => toggleDrawer();
+$('#rail-search').onclick = () => openCommandPalette();
+$('#rail-boards').onclick = () => promptCreateFile('canvas');
+$('#rail-tags').onclick = () => openCommandPalette();
+$('#rail-shortcuts').onclick = () => openShortcutsDialog();
+$('#btn-pin-drawer').onclick = () => togglePinDrawer();
+$('#btn-close-drawer').onclick = () => toggleDrawer(false);
+$('#btn-open-drawer').onclick = () => toggleDrawer(true);
+$('#drawer-backdrop').onclick = () => toggleDrawer(false);
+
+$('#btn-new-note').onclick = () => promptCreateFile('md');
+$('#btn-new-canvas').onclick = () => promptCreateFile('canvas');
+$('#btn-new-folder').onclick = () => promptCreateFolder('');
+$('#btn-save').onclick = () => saveActiveFile();
+$('#chk-autosave').onchange = e => { autosaveEnabled = e.target.checked; };
+
+$('#btn-collapse-all').onclick = () => {
+  function collectDirs(node) {
+    if (node.kind === 'directory' && node.path) collapsedDirs.add(node.path);
+    if (node.children) node.children.forEach(collectDirs);
+  }
+  if (rootTree) collectDirs(rootTree);
+  renderTree();
+};
+
 treeEl.onclick = async e => {
   const actionBtn = e.target.closest('[data-action]');
   if (actionBtn) {
@@ -1689,53 +2091,12 @@ treeEl.onclick = async e => {
   if (fileRow) await openFile(fileRow.dataset.p);
 };
 
-$('#btn-collapse-all').onclick = () => {
-  function collectDirs(node) {
-    if (node.kind === 'directory' && node.path) collapsedDirs.add(node.path);
-    if (node.children) node.children.forEach(collectDirs);
-  }
-  if (rootTree) collectDirs(rootTree);
-  renderTree();
-};
-
-$('#btn-new-note').onclick = () => promptCreateFile('md');
-$('#btn-new-canvas').onclick = () => promptCreateFile('canvas');
-$('#btn-new-folder').onclick = () => promptCreateFolder('');
-
-/* ==========================================================================
-   KEYBOARD SHORTCUTS & INPUT LISTENERS (RULE 1 CANVAS DELETE KEY)
-   ========================================================================== */
-window.addEventListener('keydown', e => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-    e.preventDefault();
-    saveActiveFile();
-  }
-
-  // Delete key on canvas
-  if (curFile && curFile.type === 'cv' && B.dataset.canvasView === 'board' && !['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeElement.tagName)) {
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      if (sel) {
-        D.nodes = D.nodes.filter(n => n.id !== sel);
-        D.edges = D.edges.filter(x => x.fromNode !== sel && x.toNode !== sel);
-        sel = null;
-        commitCanvas();
-        draw();
-        updateOutline();
-      } else if (selE) {
-        D.edges = D.edges.filter(x => x.id !== selE);
-        selE = null;
-        commitCanvas();
-        draw();
-        updateOutline();
-      }
-    }
-  }
-});
-
 ed.oninput = () => {
   if (!curFile) return;
   curFile.content = ed.value;
-  updateOutline();
+  updateStatusPill();
+  updateNoteMetaChips();
+  updateHoverOutline();
   queueSave();
 };
 
@@ -1746,7 +2107,6 @@ js.oninput = () => {
     curFile.content = js.value;
     loadCanvas();
     draw();
-    updateOutline();
     queueSave();
     js.classList.remove('bad');
   } catch (e) {
@@ -1754,9 +2114,7 @@ js.oninput = () => {
   }
 };
 
-/* ==========================================================================
-   NAVIGATION LOCKDOWN & IN-APP MODAL (RULE 4)
-   ========================================================================== */
+/* External Link Lockdown */
 document.addEventListener('click', async e => {
   const a = e.target.closest('a');
   if (!a) return;
@@ -1776,9 +2134,7 @@ document.addEventListener('click', async e => {
   }
 });
 
-/* ==========================================================================
-   WORKSPACE SELECTION & WATCHER (RULE 7)
-   ========================================================================== */
+/* Workspace Selection & Watcher */
 $('#btn-open-dir').onclick = async () => {
   try {
     await storage.stopWatch();
@@ -1792,11 +2148,6 @@ $('#btn-open-dir').onclick = async () => {
     toast('Folder selection error: ' + err);
   }
 };
-
-$('#btn-save').onclick = () => saveActiveFile();
-$('#chk-autosave').onchange = e => { autosaveEnabled = e.target.checked; };
-$('#btn-toggle-files').onclick = () => { B.classList.toggle('nf'); };
-$('#btn-toggle-info').onclick = () => { B.classList.toggle('ni'); };
 
 async function setupWatcher() {
   await storage.watch(async ({ paths }) => {
@@ -1816,7 +2167,6 @@ async function setupWatcher() {
           loadCanvas();
           draw();
         }
-        updateOutline();
         toast('Updated from disk');
       }
     } else {
@@ -1825,11 +2175,29 @@ async function setupWatcher() {
   });
 }
 
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.hidden = false;
+  setTimeout(() => { t.hidden = true; }, 2400);
+}
+
 /* ==========================================================================
    INITIALIZATION
    ========================================================================== */
 async function init() {
+  updateDrawerState();
   await reloadTree();
   await setupWatcher();
+
+  // Restore previous tabs
+  if (openTabs.length) {
+    const first = fileMap.get(openTabs[0].path);
+    if (first) await openFile(first.path);
+  } else {
+    // Open first available note
+    const firstMd = Array.from(fileMap.values()).find(f => f.type === 'md');
+    if (firstMd) await openFile(firstMd.path);
+  }
 }
 init();

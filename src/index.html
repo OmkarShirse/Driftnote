@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Driftnote</title>
@@ -14,56 +15,70 @@
 <div id="demo-mode-banner" class="banner banner-warn" hidden>
   <strong>Demo Mode:</strong> Browser storage active. Nothing is saved to disk.
 </div>
+<div id="canvas-broken-banner" class="banner banner-error" hidden>
+  <strong>Corrupted Canvas JSON:</strong> Parsing failed. Edits and autosave are disabled for this file to prevent data loss.
+</div>
 
-<header id="bar">
-  <div class="header-group left-group">
-    <button id="btn-toggle-files" aria-pressed="true" title="Toggle file tree">
-      <span class="btn-icon">📁</span><span class="btn-label">Files</span>
-    </button>
-  </div>
+<div id="shell">
+  <!-- 56px Icon Rail -->
+  <nav id="rail" aria-label="Quick Navigation">
+    <div class="rail-logo" title="Driftnote">✦</div>
 
-  <span class="header-sep"></span>
+    <div class="rail-group">
+      <button id="rail-files" class="rail-btn active" title="Files (Shift+ArrowLeft)" aria-label="Toggle Files Drawer">
+        <span class="rail-icon">📁</span>
+        <span class="rail-tooltip">Files</span>
+      </button>
+      <button id="rail-search" class="rail-btn" title="Command Palette (Ctrl+K)" aria-label="Command Palette">
+        <span class="rail-icon">🔍</span>
+        <span class="rail-tooltip">Jump / Commands</span>
+      </button>
+      <button id="rail-boards" class="rail-btn" title="New Canvas Board (Ctrl+Shift+N)" aria-label="New Canvas Board">
+        <span class="rail-icon">◫</span>
+        <span class="rail-tooltip">New Canvas</span>
+      </button>
+      <button id="rail-tags" class="rail-btn" title="Filter by Tags" aria-label="Tags">
+        <span class="rail-icon">🏷️</span>
+        <span class="rail-tooltip">Tags</span>
+      </button>
+      <button id="rail-shortcuts" class="rail-btn" title="Keyboard Shortcuts (Ctrl+/)" aria-label="Shortcuts">
+        <span class="rail-icon">⌨️</span>
+        <span class="rail-tooltip">Shortcuts</span>
+      </button>
+    </div>
 
-  <div id="title-wrap">
-    <span id="title">No file open</span>
-    <span id="status-badge" class="saved">Saved</span>
-  </div>
+    <div class="rail-footer">
+      <button id="btn-theme" class="rail-btn" title="Toggle Light / Dark Theme (Ctrl+Shift+T)" aria-label="Toggle Theme">
+        <span class="btn-icon">☀️</span>
+        <span class="rail-tooltip">Theme</span>
+      </button>
+    </div>
+  </nav>
 
-  <span class="header-sep"></span>
+  <!-- Slide-out Drawer Overlay Backdrop (Mobile) -->
+  <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
 
-  <div class="header-group right-group">
-    <button id="btn-view-mode" title="Toggle Edit / Reading view">
-      <span class="btn-icon">✏️</span><span class="btn-label">Edit</span>
-    </button>
-    <button id="btn-canvas-view" style="display:none" title="Toggle Canvas Board / JSON view">
-      <span class="btn-icon">◫</span><span class="btn-label">JSON</span>
-    </button>
-    <button id="btn-save" title="Save file (Ctrl+S)">
-      <span class="btn-icon">💾</span><span class="btn-label">Save</span>
-    </button>
-    <button id="btn-width" title="Toggle line width">Readable</button>
-    <button id="btn-theme" title="Toggle light / dark theme">
-      <span class="btn-icon">☀️</span><span class="btn-label">Theme</span>
-    </button>
-    <button id="btn-toggle-info" aria-pressed="true" title="Toggle side panel">
-      <span class="btn-icon">📑</span><span class="btn-label">Panel</span>
-    </button>
-  </div>
-</header>
-
-<div id="app">
-  <aside id="files">
-    <div class="vault-header">
-      <span class="vault-name"><span id="vault-icon">📁</span> <span id="vault-title">Workspace</span></span>
-      <div class="vault-actions">
-        <button id="btn-new-note" title="New Note (+)">+ Note</button>
-        <button id="btn-new-canvas" title="New Canvas">+ Canvas</button>
-        <button id="btn-new-folder" title="New Folder">+ Folder</button>
-        <button id="btn-collapse-all" title="Collapse all folders">Collapse</button>
+  <!-- Slide-out Drawer (File Tree) -->
+  <aside id="drawer" class="drawer" aria-label="File Drawer">
+    <div class="drawer-header">
+      <div class="vault-info">
+        <span id="vault-icon">📁</span>
+        <span id="vault-title" class="vault-title">Workspace</span>
+      </div>
+      <div class="drawer-header-actions">
+        <button id="btn-pin-drawer" class="btn-icon-sm" title="Pin drawer to dock" aria-pressed="true">📌</button>
+        <button id="btn-close-drawer" class="btn-icon-sm btn-drawer-close" title="Close drawer" aria-label="Close drawer">✕</button>
       </div>
     </div>
 
-    <button id="btn-open-dir" class="wide btn-primary">Open folder</button>
+    <div class="drawer-actions">
+      <button id="btn-new-note" class="btn-xs" title="New Note (Ctrl+N)">+ Note</button>
+      <button id="btn-new-canvas" class="btn-xs" title="New Canvas (Ctrl+Shift+N)">+ Canvas</button>
+      <button id="btn-new-folder" class="btn-xs" title="New Folder">+ Folder</button>
+      <button id="btn-collapse-all" class="btn-xs" title="Collapse all folders">Collapse</button>
+    </div>
+
+    <button id="btn-open-dir" class="wide btn-primary btn-sm">Open folder</button>
 
     <div class="autosave-bar">
       <label class="autosave-label">
@@ -71,84 +86,179 @@
       </label>
     </div>
 
-    <div id="file-tree"></div>
+    <div id="file-tree" role="tree" aria-label="File tree"></div>
   </aside>
 
-  <main id="main">
-    <div id="canvas-broken-banner" class="banner banner-error" hidden>
-      <strong>Corrupted Canvas JSON:</strong> Parsing failed. Edits and autosave are disabled for this file to prevent data loss.
-    </div>
+  <!-- Workspace Area -->
+  <div id="workspace">
+    <!-- Top Bar: Drawer Toggle, Floating Tab Pills, Save -->
+    <header id="tabs-bar">
+      <button id="btn-open-drawer" class="tab-drawer-toggle" title="Open file drawer" aria-label="Open file drawer">📁</button>
+      <div id="tabs-list" class="tabs-list" role="tablist">
+        <!-- Floating tab pills injected dynamically by app.js -->
+      </div>
+      <div class="tabs-actions">
+        <button id="btn-save" class="btn-sm btn-save" title="Save file (Ctrl+S)">💾 Save</button>
+      </div>
+    </header>
 
-    <div id="doc-container">
-      <section id="md">
-        <textarea id="ed" spellcheck="false" aria-label="Note source"></textarea>
-        <article id="pv"></article>
-      </section>
-    </div>
-
-    <section id="cv">
-      <div id="vp">
-        <div id="world"><svg id="edges"></svg></div>
-        <div id="card-toolbar" class="card-toolbar" hidden>
-          <select id="tb-shape" title="Card shape">
-            <option value="default">Default</option>
-            <option value="rectangle">Rectangle</option>
-            <option value="pill">Pill</option>
-            <option value="circle">Circle</option>
-            <option value="diamond">Diamond</option>
-            <option value="parallelogram">Parallelogram</option>
-            <option value="document">Document</option>
-            <option value="database">Database</option>
-          </select>
-          <select id="tb-border" title="Border style">
-            <option value="default">Solid</option>
-            <option value="dashed">Dashed</option>
-            <option value="dotted">Dotted</option>
-            <option value="invisible">None</option>
-          </select>
-          <input type="range" id="tb-width" min="1" max="6" value="2" title="Border width">
-          <div class="tb-colors">
-            <button data-c="" class="tb-swatch tb-none" title="No color">∅</button>
-            <button data-c="1" class="tb-swatch" style="background:#e5484d" title="Red"></button>
-            <button data-c="2" class="tb-swatch" style="background:#f08a24" title="Orange"></button>
-            <button data-c="3" class="tb-swatch" style="background:#d9a900" title="Yellow"></button>
-            <button data-c="4" class="tb-swatch" style="background:#30a46c" title="Green"></button>
-            <button data-c="5" class="tb-swatch" style="background:#3366cc" title="Blue"></button>
-            <button data-c="6" class="tb-swatch" style="background:#8e4ec6" title="Purple"></button>
-            <input type="color" id="tb-custom-color" class="tb-color-input" title="Custom color" value="#3366cc">
+    <!-- Main Stage Container -->
+    <main id="main">
+      <!-- Markdown Stage -->
+      <section id="doc-container">
+        <!-- Note Header with Title & Metadata Chips -->
+        <div id="note-header" class="note-header">
+          <div class="note-header-main">
+            <h1 id="note-title" class="note-title">No file open</h1>
+            <div class="note-meta-chips">
+              <span id="chip-mtime" class="meta-chip" title="Last edited">🕒 Just now</span>
+              <span id="chip-words" class="meta-chip" title="Word count">📝 0 words</span>
+              <span id="chip-tags" class="meta-chip" title="Note tags">🏷️ No tags</span>
+            </div>
           </div>
-          <button id="tb-del" title="Delete card" class="btn-del">🗑️</button>
-        </div>
-      </div>
-      <textarea id="js" spellcheck="false" aria-label="Canvas JSON"></textarea>
-      <div class="ctl">
-        <button id="ac">+ Card</button>
-        <button id="ag">+ Group</button>
-        <button id="zo" aria-label="Zoom out">&minus;</button>
-        <button id="zi" aria-label="Zoom in">+</button>
-        <button id="zr">Reset view</button>
-      </div>
-    </section>
 
-    <section id="img-viewer" style="display:none">
-      <div class="img-viewer-bar">
-        <span id="img-meta">Image viewer</span>
-        <div style="display:flex;gap:4px">
-          <button id="btn-img-fit">Fit</button>
-          <button id="btn-img-100">100%</button>
-          <button id="btn-img-zin">+</button>
-          <button id="btn-img-zout">&minus;</button>
+          <!-- Hover-expand "On this page" outline widget -->
+          <div id="note-outline-widget" class="outline-widget">
+            <div class="outline-pill" tabindex="0" role="button" aria-expanded="false" title="On this page outline">
+              <span class="outline-icon">📑</span>
+              <span class="outline-label">On this page</span>
+            </div>
+            <div id="outline-dropdown" class="outline-dropdown" role="navigation" aria-label="Page Table of Contents">
+              <div class="outline-dropdown-header">Table of Contents</div>
+              <div id="outline-list" class="outline-list"></div>
+            </div>
+          </div>
         </div>
-      </div>
-      <div id="img-canvas">
-        <img id="img-viewed" alt="Image asset">
-      </div>
-    </section>
-  </main>
 
-  <aside id="info"></aside>
+        <div id="md" class="md-stage">
+          <textarea id="ed" spellcheck="false" aria-label="Note source"></textarea>
+          <div id="pv" class="markdown-preview" aria-label="Rendered preview"></div>
+        </div>
+      </section>
+
+      <!-- Canvas Stage -->
+      <section id="cv">
+        <!-- Floating Canvas Top Toolbar -->
+        <div id="canvas-top-bar" class="canvas-top-bar">
+          <button id="ac" class="btn-canvas" title="Add Card">+ Card</button>
+          <button id="ag" class="btn-canvas" title="Add Group">+ Group</button>
+          <button id="btn-canvas-view" class="btn-canvas" title="Toggle Board / JSON view">JSON</button>
+          <span class="canvas-sep"></span>
+          <button id="zi" class="btn-canvas" title="Zoom in">+</button>
+          <button id="zo" class="btn-canvas" title="Zoom out">&minus;</button>
+          <button id="zr" class="btn-canvas" title="Reset view">Reset</button>
+        </div>
+
+        <div id="vp">
+          <div id="world">
+            <svg id="edges"></svg>
+          </div>
+
+          <!-- Floating Mini Toolbar above selected card -->
+          <div id="card-toolbar" class="card-toolbar" hidden>
+            <select id="tb-shape" title="Card shape">
+              <option value="default">Default</option>
+              <option value="rect">Rectangle</option>
+              <option value="pill">Pill</option>
+              <option value="circle">Circle</option>
+              <option value="diamond">Diamond</option>
+              <option value="para">Parallelogram</option>
+            </select>
+            <select id="tb-border" title="Border style">
+              <option value="solid">Solid</option>
+              <option value="dashed">Dashed</option>
+              <option value="dotted">Dotted</option>
+              <option value="none">None</option>
+            </select>
+            <input type="range" id="tb-width" min="1" max="6" value="2" title="Border width">
+            <div class="tb-colors">
+              <button data-c="" class="tb-swatch tb-none" title="No color">∅</button>
+              <button data-c="1" class="tb-swatch" style="background:var(--c-1)" title="Red"></button>
+              <button data-c="2" class="tb-swatch" style="background:var(--c-2)" title="Orange"></button>
+              <button data-c="3" class="tb-swatch" style="background:var(--c-3)" title="Yellow"></button>
+              <button data-c="4" class="tb-swatch" style="background:var(--c-4)" title="Green"></button>
+              <button data-c="5" class="tb-swatch" style="background:var(--c-5)" title="Blue"></button>
+              <button data-c="6" class="tb-swatch" style="background:var(--c-6)" title="Purple"></button>
+              <input type="color" id="tb-custom-color" class="tb-color-input" title="Custom color" value="#3366cc">
+            </div>
+            <button id="tb-del" title="Delete card" class="btn-del">🗑️</button>
+          </div>
+        </div>
+
+        <textarea id="js" spellcheck="false" aria-label="Canvas JSON"></textarea>
+
+        <!-- Canvas Minimap -->
+        <div id="canvas-minimap" class="canvas-minimap" title="Canvas Minimap">
+          <canvas id="minimap-canvas" width="160" height="100"></canvas>
+        </div>
+      </section>
+
+      <!-- Image Viewer Stage -->
+      <section id="img-viewer">
+        <div class="img-viewer-bar">
+          <span id="img-meta">Image viewer</span>
+          <div style="display:flex;gap:4px">
+            <button id="btn-img-fit">Fit</button>
+            <button id="btn-img-100">100%</button>
+            <button id="btn-img-zin">+</button>
+            <button id="btn-img-zout">&minus;</button>
+          </div>
+        </div>
+        <div id="img-canvas">
+          <img id="img-viewed" alt="Image asset">
+        </div>
+      </section>
+    </main>
+
+    <!-- Floating Status Pill -->
+    <div id="status-pill" class="status-pill" role="status" aria-live="polite">
+      <!-- Note status controls -->
+      <div id="status-pill-note" class="status-pill-group">
+        <span id="status-badge" class="status-badge saved">Saved</span>
+        <span id="pill-words" class="pill-meta">0 words</span>
+        <button id="btn-view-mode" class="pill-btn" title="Toggle Edit / Read mode (Ctrl+E)">✏️ Edit</button>
+      </div>
+
+      <!-- Canvas status controls -->
+      <div id="status-pill-canvas" class="status-pill-group" style="display:none">
+        <span id="pill-canvas-zoom" class="pill-meta">100%</span>
+        <button id="pill-zin" class="pill-btn" title="Zoom In">+</button>
+        <button id="pill-zout" class="pill-btn" title="Zoom Out">&minus;</button>
+        <button id="pill-zr" class="pill-btn" title="Reset View">⟲</button>
+      </div>
+    </div>
+  </div>
 </div>
 
+<!-- Command Palette Modal -->
+<div id="palette-modal" class="modal-overlay" hidden>
+  <div class="palette-card">
+    <div class="palette-input-wrap">
+      <span class="palette-icon">🔍</span>
+      <input type="text" id="palette-input" class="palette-input" placeholder="Type a command or file name..." autocomplete="off" spellcheck="false">
+      <span class="palette-hint">ESC to close</span>
+    </div>
+    <div id="palette-results" class="palette-results" role="listbox"></div>
+  </div>
+</div>
+
+<!-- Shortcuts Dialog Modal -->
+<div id="shortcuts-modal" class="modal-overlay" hidden>
+  <div class="shortcuts-card">
+    <div class="shortcuts-header">
+      <h3>Keyboard Shortcuts</h3>
+      <button id="btn-close-shortcuts" class="btn-icon-sm" aria-label="Close shortcuts">✕</button>
+    </div>
+    <div id="shortcuts-conflict-banner" class="banner banner-warn" hidden></div>
+    <div id="shortcuts-list" class="shortcuts-list"></div>
+    <div class="shortcuts-footer">
+      <button id="btn-reset-shortcuts">Reset to defaults</button>
+      <button id="btn-done-shortcuts" class="btn-primary">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Standard In-App Dialog Modal -->
 <div id="modal" hidden>
   <div class="modal-card">
     <h3 id="modal-title">Notice</h3>
@@ -163,6 +273,7 @@
 </div>
 
 <div id="toast" hidden></div>
+
 <script src="vendor/marked.min.js"></script>
 <script src="vendor/purify.min.js"></script>
 <script src="app.js"></script>
