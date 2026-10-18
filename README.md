@@ -60,3 +60,4 @@ To build a release package (AppImage, deb):
 ```bash
 cargo tauri build
 ```
+

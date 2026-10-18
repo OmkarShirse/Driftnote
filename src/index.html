@@ -8,22 +8,46 @@
 </head>
 <body data-type="md" data-mode="read" data-canvas-view="board">
 
+<div id="tauri-missing-banner" class="banner banner-error" hidden>
+  <strong>Critical Platform Error:</strong> Tauri environment detected but <code>window.__TAURI__.core</code> is missing. IPC disabled.
+</div>
+<div id="demo-mode-banner" class="banner banner-warn" hidden>
+  <strong>Demo Mode:</strong> Browser storage active. Nothing is saved to disk.
+</div>
+
 <header id="bar">
-  <div class="left-group">
-    <button id="btn-toggle-files" aria-pressed="true" title="Toggle file tree">📁 Files</button>
+  <div class="header-group left-group">
+    <button id="btn-toggle-files" aria-pressed="true" title="Toggle file tree">
+      <span class="btn-icon">📁</span><span class="btn-label">Files</span>
+    </button>
   </div>
+
+  <span class="header-sep"></span>
 
   <div id="title-wrap">
     <span id="title">No file open</span>
     <span id="status-badge" class="saved">Saved</span>
   </div>
 
-  <div class="right-group">
-    <button id="btn-view-mode" title="Toggle Edit / Reading view">✏️ Edit</button>
-    <button id="btn-canvas-view" style="display:none" title="Toggle Canvas Board / JSON view">JSON</button>
-    <button id="btn-save" title="Save file (Ctrl+S)">Save</button>
-    <button id="btn-theme" title="Toggle light / dark theme">☀️ Theme</button>
-    <button id="btn-toggle-info" aria-pressed="true" title="Toggle outline panel">Outline</button>
+  <span class="header-sep"></span>
+
+  <div class="header-group right-group">
+    <button id="btn-view-mode" title="Toggle Edit / Reading view">
+      <span class="btn-icon">✏️</span><span class="btn-label">Edit</span>
+    </button>
+    <button id="btn-canvas-view" style="display:none" title="Toggle Canvas Board / JSON view">
+      <span class="btn-icon">◫</span><span class="btn-label">JSON</span>
+    </button>
+    <button id="btn-save" title="Save file (Ctrl+S)">
+      <span class="btn-icon">💾</span><span class="btn-label">Save</span>
+    </button>
+    <button id="btn-width" title="Toggle line width">Readable</button>
+    <button id="btn-theme" title="Toggle light / dark theme">
+      <span class="btn-icon">☀️</span><span class="btn-label">Theme</span>
+    </button>
+    <button id="btn-toggle-info" aria-pressed="true" title="Toggle side panel">
+      <span class="btn-icon">📑</span><span class="btn-label">Panel</span>
+    </button>
   </div>
 </header>
 
@@ -31,17 +55,18 @@
   <aside id="files">
     <div class="vault-header">
       <span class="vault-name"><span id="vault-icon">📁</span> <span id="vault-title">Workspace</span></span>
-      <div style="display:flex;gap:4px">
-        <button id="btn-new-note" title="New Note (+)" style="font-size:12px;padding:2px 6px">+ Note</button>
-        <button id="btn-new-canvas" title="New Canvas" style="font-size:12px;padding:2px 6px">+ Canvas</button>
-        <button id="btn-collapse-all" title="Collapse all folders" style="font-size:12px;padding:2px 6px">Collapse</button>
+      <div class="vault-actions">
+        <button id="btn-new-note" title="New Note (+)">+ Note</button>
+        <button id="btn-new-canvas" title="New Canvas">+ Canvas</button>
+        <button id="btn-new-folder" title="New Folder">+ Folder</button>
+        <button id="btn-collapse-all" title="Collapse all folders">Collapse</button>
       </div>
     </div>
 
     <button id="btn-open-dir" class="wide btn-primary">Open folder</button>
 
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:2px 2px">
-      <label style="font-size:12px;color:var(--mute);cursor:pointer;display:flex;align-items:center;gap:5px">
+    <div class="autosave-bar">
+      <label class="autosave-label">
         <input type="checkbox" id="chk-autosave" checked> Autosave edits
       </label>
     </div>
@@ -50,6 +75,10 @@
   </aside>
 
   <main id="main">
+    <div id="canvas-broken-banner" class="banner banner-error" hidden>
+      <strong>Corrupted Canvas JSON:</strong> Parsing failed. Edits and autosave are disabled for this file to prevent data loss.
+    </div>
+
     <div id="doc-container">
       <section id="md">
         <textarea id="ed" spellcheck="false" aria-label="Note source"></textarea>
@@ -58,7 +87,39 @@
     </div>
 
     <section id="cv">
-      <div id="vp"><div id="world"><svg id="edges"></svg></div></div>
+      <div id="vp">
+        <div id="world"><svg id="edges"></svg></div>
+        <div id="card-toolbar" class="card-toolbar" hidden>
+          <select id="tb-shape" title="Card shape">
+            <option value="default">Default</option>
+            <option value="rectangle">Rectangle</option>
+            <option value="pill">Pill</option>
+            <option value="circle">Circle</option>
+            <option value="diamond">Diamond</option>
+            <option value="parallelogram">Parallelogram</option>
+            <option value="document">Document</option>
+            <option value="database">Database</option>
+          </select>
+          <select id="tb-border" title="Border style">
+            <option value="default">Solid</option>
+            <option value="dashed">Dashed</option>
+            <option value="dotted">Dotted</option>
+            <option value="invisible">None</option>
+          </select>
+          <input type="range" id="tb-width" min="1" max="6" value="2" title="Border width">
+          <div class="tb-colors">
+            <button data-c="" class="tb-swatch tb-none" title="No color">∅</button>
+            <button data-c="1" class="tb-swatch" style="background:#e5484d" title="Red"></button>
+            <button data-c="2" class="tb-swatch" style="background:#f08a24" title="Orange"></button>
+            <button data-c="3" class="tb-swatch" style="background:#d9a900" title="Yellow"></button>
+            <button data-c="4" class="tb-swatch" style="background:#30a46c" title="Green"></button>
+            <button data-c="5" class="tb-swatch" style="background:#3366cc" title="Blue"></button>
+            <button data-c="6" class="tb-swatch" style="background:#8e4ec6" title="Purple"></button>
+            <input type="color" id="tb-custom-color" class="tb-color-input" title="Custom color" value="#3366cc">
+          </div>
+          <button id="tb-del" title="Delete card" class="btn-del">🗑️</button>
+        </div>
+      </div>
       <textarea id="js" spellcheck="false" aria-label="Canvas JSON"></textarea>
       <div class="ctl">
         <button id="ac">+ Card</button>
@@ -66,6 +127,21 @@
         <button id="zo" aria-label="Zoom out">&minus;</button>
         <button id="zi" aria-label="Zoom in">+</button>
         <button id="zr">Reset view</button>
+      </div>
+    </section>
+
+    <section id="img-viewer" style="display:none">
+      <div class="img-viewer-bar">
+        <span id="img-meta">Image viewer</span>
+        <div style="display:flex;gap:4px">
+          <button id="btn-img-fit">Fit</button>
+          <button id="btn-img-100">100%</button>
+          <button id="btn-img-zin">+</button>
+          <button id="btn-img-zout">&minus;</button>
+        </div>
+      </div>
+      <div id="img-canvas">
+        <img id="img-viewed" alt="Image asset">
       </div>
     </section>
   </main>
@@ -77,6 +153,8 @@
   <div class="modal-card">
     <h3 id="modal-title">Notice</h3>
     <p id="modal-desc"></p>
+    <input type="text" id="modal-input" class="modal-input" hidden spellcheck="false">
+    <div id="modal-err" class="modal-err" hidden></div>
     <div class="modal-actions" id="modal-actions">
       <button id="modal-cancel">Cancel</button>
       <button id="modal-ok" class="btn-primary">OK</button>
@@ -85,10 +163,8 @@
 </div>
 
 <div id="toast" hidden></div>
-
 <script src="vendor/marked.min.js"></script>
 <script src="vendor/purify.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
-
