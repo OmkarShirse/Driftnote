@@ -6,4 +6,5 @@ src-tauri/gen/
 .DS_Store
 *.tmp_*
 last_root.txt
+hotkeys.json
 
