@@ -732,7 +732,12 @@ pub fn run() {
             tauri::plugin::Builder::<tauri::Wry, ()>::new("nav-guard")
                 .on_navigation(|_webview, url| {
                     (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
-                        || (url.scheme() == "http" && url.host_str() == Some("ipc.localhost"))
+                        || (url.scheme() == "http" && (
+                            url.host_str() == Some("localhost")
+                            || url.host_str() == Some("127.0.0.1")
+                            || url.host_str() == Some("ipc.localhost")
+                            || url.host_str() == Some("tauri.localhost")
+                        ))
                 })
                 .build(),
         )
