@@ -911,6 +911,11 @@ async function openFile(path) {
   B.dataset.type = f.type;
   addTab(f);
 
+  const pageIcon = $('#note-page-icon');
+  if (pageIcon) {
+    pageIcon.textContent = (f.type === 'cv') ? '◫' : (f.type === 'img') ? '🖼️' : '📄';
+  }
+
   if (f.type === 'md') {
     ed.value = f.content || '';
     setViewMode(B.dataset.mode || 'read');
@@ -1714,6 +1719,117 @@ $('#btn-reset-shortcuts').onclick = () => {
 $('#shortcuts-modal').onclick = e => {
   if (e.target === $('#shortcuts-modal')) closeShortcutsDialog();
 };
+
+/* ==========================================================================
+   SETTINGS MODAL & NOTION SIDEBAR INTERACTIONS
+   ========================================================================== */
+function openSettingsModal() {
+  const modal = $('#settings-modal');
+  if (!modal) return;
+  modal.hidden = false;
+
+  const lightBtn = $('#btn-theme-light');
+  const darkBtn = $('#btn-theme-dark');
+  if (lightBtn && darkBtn) {
+    lightBtn.classList.toggle('active', !dark);
+    darkBtn.classList.toggle('active', dark);
+  }
+
+  const chk = $('#chk-autosave');
+  if (chk) chk.checked = autosaveEnabled;
+
+  const folderPath = $('#settings-folder-path');
+  const vaultTitle = $('#vault-title');
+  if (folderPath && vaultTitle) {
+    folderPath.textContent = 'Current: ' + (vaultTitle.textContent || 'Not selected');
+  }
+}
+
+function closeSettingsModal() {
+  const modal = $('#settings-modal');
+  if (modal) modal.hidden = true;
+}
+
+const btnCloseSettings = $('#btn-close-settings');
+if (btnCloseSettings) btnCloseSettings.onclick = closeSettingsModal;
+
+const btnDoneSettings = $('#btn-done-settings');
+if (btnDoneSettings) btnDoneSettings.onclick = closeSettingsModal;
+
+const settingsModalEl = $('#settings-modal');
+if (settingsModalEl) {
+  settingsModalEl.onclick = e => {
+    if (e.target === settingsModalEl) closeSettingsModal();
+  };
+}
+
+const btnThemeLight = $('#btn-theme-light');
+if (btnThemeLight) {
+  btnThemeLight.onclick = () => {
+    applyTheme(false);
+    btnThemeLight.classList.add('active');
+    const darkBtn = $('#btn-theme-dark');
+    if (darkBtn) darkBtn.classList.remove('active');
+  };
+}
+
+const btnThemeDark = $('#btn-theme-dark');
+if (btnThemeDark) {
+  btnThemeDark.onclick = () => {
+    applyTheme(true);
+    btnThemeDark.classList.add('active');
+    const lightBtn = $('#btn-theme-light');
+    if (lightBtn) lightBtn.classList.remove('active');
+  };
+}
+
+const btnSettingsShortcuts = $('#btn-settings-shortcuts');
+if (btnSettingsShortcuts) {
+  btnSettingsShortcuts.onclick = () => {
+    closeSettingsModal();
+    openShortcutsDialog();
+  };
+}
+
+const btnSettingsOpenFolder = $('#btn-settings-open-folder');
+if (btnSettingsOpenFolder) {
+  btnSettingsOpenFolder.onclick = () => {
+    $('#btn-open-dir').click();
+  };
+}
+
+const btnOpenSettingsRail = $('#btn-open-settings-rail');
+if (btnOpenSettingsRail) btnOpenSettingsRail.onclick = openSettingsModal;
+
+const navItemSettings = $('#nav-item-settings');
+if (navItemSettings) navItemSettings.onclick = openSettingsModal;
+
+const btnSidebarSettings = $('#btn-sidebar-settings');
+if (btnSidebarSettings) btnSidebarSettings.onclick = openSettingsModal;
+
+const navItemSearch = $('#nav-item-search');
+if (navItemSearch) navItemSearch.onclick = openCommandPalette;
+
+const navItemBoards = $('#nav-item-boards');
+if (navItemBoards) navItemBoards.onclick = () => promptCreateFile('canvas');
+
+const navItemTags = $('#nav-item-tags');
+if (navItemTags) {
+  navItemTags.onclick = () => {
+    toast('Tags viewer');
+  };
+}
+
+const btnWorkspaceSwitch = $('#btn-sidebar-workspace-switch');
+if (btnWorkspaceSwitch) {
+  btnWorkspaceSwitch.onclick = () => $('#btn-open-dir').click();
+}
+
+const btnSidebarNewNote = $('#btn-sidebar-new-note');
+if (btnSidebarNewNote) {
+  btnSidebarNewNote.onclick = () => promptCreateFile('md');
+}
+
 
 /* ==========================================================================
    KEYBOARD DISPATCHER

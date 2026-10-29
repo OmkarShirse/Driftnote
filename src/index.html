@@ -20,24 +20,24 @@
 </div>
 
 <div id="shell">
-  <!-- 56px Icon Rail -->
+  <!-- Minimal Collapsed Quick Rail -->
   <nav id="rail" aria-label="Quick Navigation">
     <div class="rail-logo" title="Driftnote">✦</div>
 
     <div class="rail-group">
-      <button id="rail-files" class="rail-btn active" title="Files (Shift+ArrowLeft)" aria-label="Toggle Files Drawer">
+      <button id="rail-files" class="rail-btn active" title="Toggle Sidebar (Shift+ArrowLeft)" aria-label="Toggle Files Sidebar">
         <span class="rail-icon">📁</span>
-        <span class="rail-tooltip">Files</span>
+        <span class="rail-tooltip">Sidebar</span>
       </button>
-      <button id="rail-search" class="rail-btn" title="Command Palette (Ctrl+K)" aria-label="Command Palette">
+      <button id="rail-search" class="rail-btn" title="Quick Find (Ctrl+K)" aria-label="Command Palette">
         <span class="rail-icon">🔍</span>
-        <span class="rail-tooltip">Jump / Commands</span>
+        <span class="rail-tooltip">Search</span>
       </button>
       <button id="rail-boards" class="rail-btn" title="New Canvas Board (Ctrl+Shift+N)" aria-label="New Canvas Board">
         <span class="rail-icon">◫</span>
         <span class="rail-tooltip">New Canvas</span>
       </button>
-      <button id="rail-tags" class="rail-btn" title="Filter by Tags" aria-label="Tags">
+      <button id="rail-tags" class="rail-btn" title="Tags" aria-label="Tags">
         <span class="rail-icon">🏷️</span>
         <span class="rail-tooltip">Tags</span>
       </button>
@@ -48,9 +48,13 @@
     </div>
 
     <div class="rail-footer">
-      <button id="btn-theme" class="rail-btn" title="Toggle Light / Dark Theme (Ctrl+Shift+T)" aria-label="Toggle Theme">
+      <button id="btn-open-settings-rail" class="rail-btn" title="Settings" aria-label="Settings">
+        <span class="rail-icon">⚙️</span>
+        <span class="rail-tooltip">Settings</span>
+      </button>
+      <!-- Kept for programmatic theme dispatch -->
+      <button id="btn-theme" class="rail-btn" title="Toggle Theme (Ctrl+Shift+T)" aria-label="Toggle Theme" style="display:none">
         <span class="btn-icon">☀️</span>
-        <span class="rail-tooltip">Theme</span>
       </button>
     </div>
   </nav>
@@ -58,47 +62,95 @@
   <!-- Slide-out Drawer Overlay Backdrop (Mobile) -->
   <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
 
-  <!-- Slide-out Drawer (File Tree) -->
+  <!-- Notion-Style Sidebar (Drawer) -->
   <aside id="drawer" class="drawer" aria-label="File Drawer">
+    <!-- Workspace Header -->
     <div class="drawer-header">
-      <div class="vault-info">
-        <span id="vault-icon">📁</span>
+      <div class="vault-info" id="btn-sidebar-workspace-switch" title="Click to open or change folder">
+        <span id="vault-icon" class="vault-icon">✦</span>
         <span id="vault-title" class="vault-title">Workspace</span>
       </div>
       <div class="drawer-header-actions">
-        <button id="btn-pin-drawer" class="btn-icon-sm" title="Pin drawer to dock" aria-pressed="true">📌</button>
-        <button id="btn-close-drawer" class="btn-icon-sm btn-drawer-close" title="Close drawer" aria-label="Close drawer">✕</button>
+        <button id="btn-pin-drawer" class="btn-icon-sm" title="Pin sidebar" aria-pressed="true">📌</button>
+        <button id="btn-close-drawer" class="btn-icon-sm btn-drawer-close" title="Close sidebar" aria-label="Close sidebar">✕</button>
       </div>
     </div>
 
-    <div class="drawer-actions">
-      <button id="btn-new-note" class="btn-xs" title="New Note (Ctrl+N)">+ Note</button>
-      <button id="btn-new-canvas" class="btn-xs" title="New Canvas (Ctrl+Shift+N)">+ Canvas</button>
-      <button id="btn-new-folder" class="btn-xs" title="New Folder">+ Folder</button>
-      <button id="btn-collapse-all" class="btn-xs" title="Collapse all folders">Collapse</button>
+    <!-- Quick Navigation (Search, Settings, Boards, Tags) -->
+    <div class="sidebar-nav-list">
+      <div class="sidebar-nav-item" id="nav-item-search">
+        <span class="nav-item-icon">🔍</span>
+        <span class="nav-item-label">Search / Quick Find</span>
+        <span class="nav-item-key">Ctrl+K</span>
+      </div>
+      <div class="sidebar-nav-item" id="nav-item-settings">
+        <span class="nav-item-icon">⚙️</span>
+        <span class="nav-item-label">Settings</span>
+      </div>
+      <div class="sidebar-nav-item" id="nav-item-boards">
+        <span class="nav-item-icon">◫</span>
+        <span class="nav-item-label">Canvas Boards</span>
+        <span class="nav-item-key">Ctrl+Shift+N</span>
+      </div>
+      <div class="sidebar-nav-item" id="nav-item-tags">
+        <span class="nav-item-icon">🏷️</span>
+        <span class="nav-item-label">All Tags</span>
+      </div>
     </div>
 
-    <button id="btn-open-dir" class="wide btn-primary btn-sm">Open folder</button>
-
-    <div class="autosave-bar">
-      <label class="autosave-label">
-        <input type="checkbox" id="chk-autosave" checked> Autosave edits
-      </label>
+    <!-- Section: Pages -->
+    <div class="sidebar-section-header">
+      <span class="sidebar-section-title">PAGES</span>
+      <div class="sidebar-section-actions">
+        <button id="btn-new-note" class="btn-section-action" title="New Note (Ctrl+N)">+ Note</button>
+        <button id="btn-new-canvas" class="btn-section-action" title="New Canvas">+ Board</button>
+        <button id="btn-new-folder" class="btn-section-action" title="New Folder">+ Folder</button>
+        <button id="btn-collapse-all" class="btn-section-action" title="Collapse all folders">Collapse</button>
+      </div>
     </div>
 
+    <!-- Hidden triggers preserved for compatibility -->
+    <button id="btn-open-dir" style="display:none">Open folder</button>
+
+    <!-- File Tree -->
     <div id="file-tree" role="tree" aria-label="File tree"></div>
+
+    <!-- Sidebar Bottom Footer -->
+    <div class="sidebar-footer">
+      <button id="btn-sidebar-new-note" class="sidebar-bottom-btn">
+        <span class="btn-icon">+</span>
+        <span>New page</span>
+      </button>
+      <button id="btn-sidebar-settings" class="sidebar-bottom-btn">
+        <span class="btn-icon">⚙️</span>
+        <span>Settings</span>
+      </button>
+    </div>
   </aside>
 
   <!-- Workspace Area -->
   <div id="workspace">
-    <!-- Top Bar: Drawer Toggle, Floating Tab Pills, Save -->
+    <!-- Top Bar: Sidebar Toggle, Tabs, Save, Status -->
     <header id="tabs-bar">
-      <button id="btn-open-drawer" class="tab-drawer-toggle" title="Open file drawer" aria-label="Open file drawer">📁</button>
+      <button id="btn-open-drawer" class="tab-drawer-toggle" title="Toggle sidebar (Shift+ArrowLeft)" aria-label="Toggle sidebar">
+        <span class="drawer-toggle-icon">☰</span>
+      </button>
+
       <div id="tabs-list" class="tabs-list" role="tablist">
-        <!-- Floating tab pills injected dynamically by app.js -->
+        <!-- Tab items injected dynamically by app.js -->
       </div>
+
       <div class="tabs-actions">
-        <button id="btn-save" class="btn-sm btn-save" title="Save file (Ctrl+S)">💾 Save</button>
+        <div id="status-pill-note" class="status-pill-group">
+          <span id="status-badge" class="status-badge saved">Saved</span>
+          <span id="pill-words" class="pill-meta">0 words</span>
+          <button id="btn-view-mode" class="pill-btn" title="Toggle Read / Edit mode (Ctrl+E)">✏️ Edit</button>
+        </div>
+
+        <button id="btn-save" class="btn-sm btn-save" title="Save file (Ctrl+S)">
+          <span>💾</span>
+          <span>Save</span>
+        </button>
       </div>
     </header>
 
@@ -106,33 +158,49 @@
     <main id="main">
       <!-- Markdown Stage -->
       <section id="doc-container">
-        <!-- Note Header with Title & Metadata Chips -->
+        <!-- Notion-Style Note Header with Title & Properties -->
         <div id="note-header" class="note-header">
-          <div class="note-header-main">
-            <h1 id="note-title" class="note-title">No file open</h1>
-            <div class="note-meta-chips">
-              <span id="chip-mtime" class="meta-chip" title="Last edited">🕒 Just now</span>
-              <span id="chip-words" class="meta-chip" title="Word count">📝 0 words</span>
-              <span id="chip-tags" class="meta-chip" title="Note tags">🏷️ No tags</span>
-            </div>
-          </div>
+          <div class="note-header-inner">
+            <div id="note-page-icon" class="note-page-icon">📄</div>
 
-          <!-- Hover-expand "On this page" outline widget -->
-          <div id="note-outline-widget" class="outline-widget">
-            <div class="outline-pill" tabindex="0" role="button" aria-expanded="false" title="On this page outline">
-              <span class="outline-icon">📑</span>
-              <span class="outline-label">On this page</span>
+            <div class="note-header-main">
+              <h1 id="note-title" class="note-title" contenteditable="false" placeholder="Untitled">No file open</h1>
+
+              <div class="note-properties-list">
+                <div class="note-property-row">
+                  <span class="prop-name">🕒 Last edited</span>
+                  <span id="chip-mtime" class="prop-val">Just now</span>
+                </div>
+                <div class="note-property-row">
+                  <span class="prop-name">📝 Words</span>
+                  <span id="chip-words" class="prop-val">0 words</span>
+                </div>
+                <div class="note-property-row">
+                  <span class="prop-name">🏷️ Tags</span>
+                  <span id="chip-tags" class="prop-val">No tags</span>
+                </div>
+              </div>
             </div>
-            <div id="outline-dropdown" class="outline-dropdown" role="navigation" aria-label="Page Table of Contents">
-              <div class="outline-dropdown-header">Table of Contents</div>
-              <div id="outline-list" class="outline-list"></div>
+
+            <!-- Outline Widget (On this page) -->
+            <div id="note-outline-widget" class="outline-widget">
+              <div class="outline-pill" tabindex="0" role="button" aria-expanded="false" title="Table of contents">
+                <span class="outline-icon">📑</span>
+                <span class="outline-label">Table of contents</span>
+              </div>
+              <div id="outline-dropdown" class="outline-dropdown" role="navigation" aria-label="Page Table of Contents">
+                <div class="outline-dropdown-header">On this page</div>
+                <div id="outline-list" class="outline-list"></div>
+              </div>
             </div>
           </div>
         </div>
 
         <div id="md" class="md-stage">
-          <textarea id="ed" spellcheck="false" aria-label="Note source"></textarea>
-          <div id="pv" class="markdown-preview" aria-label="Rendered preview"></div>
+          <div class="md-inner-wrapper">
+            <textarea id="ed" spellcheck="false" aria-label="Note source" placeholder="Start typing your note here..."></textarea>
+            <div id="pv" class="markdown-preview" aria-label="Rendered preview"></div>
+          </div>
         </div>
       </section>
 
@@ -179,7 +247,7 @@
               <button data-c="4" class="tb-swatch" style="background:var(--c-4)" title="Green"></button>
               <button data-c="5" class="tb-swatch" style="background:var(--c-5)" title="Blue"></button>
               <button data-c="6" class="tb-swatch" style="background:var(--c-6)" title="Purple"></button>
-              <input type="color" id="tb-custom-color" class="tb-color-input" title="Custom color" value="#3366cc">
+              <input type="color" id="tb-custom-color" class="tb-color-input" title="Custom color" value="#2383e2">
             </div>
             <button id="tb-del" title="Delete card" class="btn-del">🗑️</button>
           </div>
@@ -210,22 +278,95 @@
       </section>
     </main>
 
-    <!-- Floating Status Pill -->
+    <!-- Canvas Floating Zoom Control (Only shown in Canvas mode) -->
     <div id="status-pill" class="status-pill" role="status" aria-live="polite">
-      <!-- Note status controls -->
-      <div id="status-pill-note" class="status-pill-group">
-        <span id="status-badge" class="status-badge saved">Saved</span>
-        <span id="pill-words" class="pill-meta">0 words</span>
-        <button id="btn-view-mode" class="pill-btn" title="Toggle Edit / Read mode (Ctrl+E)">✏️ Edit</button>
-      </div>
-
-      <!-- Canvas status controls -->
       <div id="status-pill-canvas" class="status-pill-group" style="display:none">
         <span id="pill-canvas-zoom" class="pill-meta">100%</span>
         <button id="pill-zin" class="pill-btn" title="Zoom In">+</button>
         <button id="pill-zout" class="pill-btn" title="Zoom Out">&minus;</button>
         <button id="pill-zr" class="pill-btn" title="Reset View">⟲</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Notion-Style Settings Modal -->
+<div id="settings-modal" class="modal-overlay" hidden>
+  <div class="settings-card">
+    <div class="settings-header">
+      <div class="settings-title-wrap">
+        <span class="settings-icon">⚙️</span>
+        <h3>Settings</h3>
+      </div>
+      <button id="btn-close-settings" class="btn-icon-sm" aria-label="Close settings">✕</button>
+    </div>
+
+    <div class="settings-body">
+      <!-- Section: Appearance -->
+      <div class="settings-section">
+        <div class="settings-section-title">Appearance</div>
+        <div class="settings-row">
+          <div class="settings-label-wrap">
+            <span class="settings-label">Color Theme</span>
+            <span class="settings-desc">Customize how Driftnote looks on your device</span>
+          </div>
+          <div class="theme-switch-group">
+            <button id="btn-theme-light" class="theme-choice-btn">☀️ Light</button>
+            <button id="btn-theme-dark" class="theme-choice-btn">🌙 Dark</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section: Editor & Saving -->
+      <div class="settings-section">
+        <div class="settings-section-title">Editor & Saving</div>
+        <div class="settings-row">
+          <div class="settings-label-wrap">
+            <span class="settings-label">Autosave Edits</span>
+            <span class="settings-desc">Automatically save notes and boards 1 second after typing</span>
+          </div>
+          <label class="notion-toggle">
+            <input type="checkbox" id="chk-autosave" checked>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-label-wrap">
+            <span class="settings-label">Workspace Folder</span>
+            <span id="settings-folder-path" class="settings-desc">Current: Not selected</span>
+          </div>
+          <button id="btn-settings-open-folder" class="btn-notion-sm">Change Folder</button>
+        </div>
+      </div>
+
+      <!-- Section: Keyboard & Shortcuts -->
+      <div class="settings-section">
+        <div class="settings-section-title">Shortcuts</div>
+        <div class="settings-row">
+          <div class="settings-label-wrap">
+            <span class="settings-label">Keyboard Shortcuts</span>
+            <span class="settings-desc">View and customize hotkeys across Driftnote</span>
+          </div>
+          <button id="btn-settings-shortcuts" class="btn-notion-sm">View Shortcuts</button>
+        </div>
+      </div>
+
+      <!-- Section: About -->
+      <div class="settings-section">
+        <div class="settings-section-title">About Driftnote</div>
+        <div class="settings-row">
+          <div class="settings-label-wrap">
+            <span class="settings-label">Driftnote v0.1.0</span>
+            <span class="settings-desc">Local-first, zero network telemetry, strict offline note workspace</span>
+          </div>
+          <span class="settings-badge">Offline Ready</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="settings-footer">
+      <button id="btn-done-settings" class="btn-primary">Done</button>
     </div>
   </div>
 </div>
@@ -246,7 +387,10 @@
 <div id="shortcuts-modal" class="modal-overlay" hidden>
   <div class="shortcuts-card">
     <div class="shortcuts-header">
-      <h3>Keyboard Shortcuts</h3>
+      <div class="shortcuts-title-wrap">
+        <span class="shortcuts-icon">⌨️</span>
+        <h3>Keyboard Shortcuts</h3>
+      </div>
       <button id="btn-close-shortcuts" class="btn-icon-sm" aria-label="Close shortcuts">✕</button>
     </div>
     <div id="shortcuts-conflict-banner" class="banner banner-warn" hidden></div>
