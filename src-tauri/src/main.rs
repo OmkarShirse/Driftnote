@@ -1,23 +1,29 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    // Sanitize LD_LIBRARY_PATH if running inside a Snap environment (e.g. VS Code Snap).
-    // Snap injects old core20 libpthread/glibc paths into the environment, which breaks
-    // system WebKit subprocesses (WebKitNetworkProcess) on modern Ubuntu.
-    if let Ok(ld) = std::env::var("LD_LIBRARY_PATH") {
-        let cleaned: Vec<&str> = ld
-            .split(':')
-            .filter(|p| !p.contains("/snap/") && !p.contains("/var/lib/snapd/"))
-            .collect();
-        if cleaned.is_empty() {
-            std::env::remove_var("LD_LIBRARY_PATH");
-        } else {
-            std::env::set_var("LD_LIBRARY_PATH", cleaned.join(":"));
+    // Sanitize Snap environment pollution (e.g. VS Code Snap integrated terminal).
+    // Snap injects GTK_PATH, GIO_MODULE_DIR, LD_LIBRARY_PATH etc. pointing to /snap/core20,
+    // which causes system WebKit subprocesses (WebKitNetworkProcess) to load old snap
+    // libpthread.so.0 and crash with missing GLIBC_PRIVATE symbols.
+    for var in [
+        "GTK_PATH",
+        "GIO_MODULE_DIR",
+        "LD_LIBRARY_PATH",
+        "GDK_PIXBUF_MODULE_FILE",
+        "GDK_PIXBUF_MODULEDIR",
+        "GTK_IM_MODULE_FILE",
+        "LOCPATH",
+    ] {
+        if let Ok(val) = std::env::var(var) {
+            if val.contains("/snap/") || val.contains("/var/lib/snapd/") {
+                std::env::remove_var(var);
+            }
         }
     }
 
     driftnote_lib::run();
 }
+
 
 
 
