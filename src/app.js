@@ -171,23 +171,28 @@ let imgPan = { x: 0, y: 0 };
 let imgDragging = false;
 let imgDragStart = { x: 0, y: 0, ox: 0, oy: 0 };
 
-/* Drawer State */
-let drawerPinned = localStorage.getItem('dn_drawer_pinned') === 'true';
+/* Drawer State (Pinned by default on desktop for Notion sidebar experience) */
+let drawerPinned = localStorage.getItem('dn_drawer_pinned') !== 'false';
 let drawerOpen = localStorage.getItem('dn_drawer_open') !== 'false';
 
 function updateDrawerState() {
   $('#shell').classList.toggle('drawer-pinned', drawerPinned);
   $('#shell').classList.toggle('drawer-open', drawerOpen);
-  $('#btn-pin-drawer').setAttribute('aria-pressed', String(drawerPinned));
-  $('#rail-files').classList.toggle('active', drawerOpen);
+  const pinBtn = $('#btn-pin-drawer');
+  if (pinBtn) pinBtn.setAttribute('aria-pressed', String(drawerPinned));
+  const railFiles = $('#rail-files');
+  if (railFiles) railFiles.classList.toggle('active', drawerOpen);
 
   const backdrop = $('#drawer-backdrop');
-  if (window.innerWidth <= 760 && drawerOpen) {
-    backdrop.hidden = false;
-  } else {
-    backdrop.hidden = true;
+  if (backdrop) {
+    if (window.innerWidth <= 760 && drawerOpen && !drawerPinned) {
+      backdrop.hidden = false;
+    } else {
+      backdrop.hidden = true;
+    }
   }
 }
+window.addEventListener('resize', updateDrawerState);
 
 function toggleDrawer(forceState) {
   drawerOpen = (typeof forceState === 'boolean') ? forceState : !drawerOpen;
@@ -264,6 +269,15 @@ async function addTab(file) {
   renderTabs();
 }
 
+function showWelcomeStage(show) {
+  const ws = $('#welcome-stage');
+  const nh = $('#note-header');
+  const mdStage = $('#md');
+  if (ws) ws.hidden = !show;
+  if (nh) nh.hidden = show;
+  if (mdStage) mdStage.hidden = show;
+}
+
 async function closeTab(path) {
   const target = fileMap.get(path);
   if (target && target.dirty) {
@@ -285,6 +299,7 @@ async function closeTab(path) {
         pvEl.innerHTML = '';
         B.dataset.type = 'md';
         updateStatusPill();
+        showWelcomeStage(true);
       }
     }
   }
@@ -909,6 +924,7 @@ async function openFile(path) {
   curFile = f;
   sel = selE = null;
   B.dataset.type = f.type;
+  showWelcomeStage(false);
   addTab(f);
 
   const pageIcon = $('#note-page-icon');
@@ -972,8 +988,20 @@ async function reloadTree() {
 }
 
 function renderTree() {
-  if (!rootTree) return;
   treeEl.innerHTML = '';
+  if (!rootTree || !rootTree.children || rootTree.children.length === 0) {
+    const emptyPrompt = document.createElement('div');
+    emptyPrompt.className = 'tree-empty-prompt';
+    emptyPrompt.innerHTML = `
+      <div class="tree-empty-icon">📂</div>
+      <div class="tree-empty-text">${!rootTree ? 'No workspace folder selected' : 'Workspace folder is empty'}</div>
+      <button id="btn-tree-open" class="btn-tree-open">Choose Folder</button>
+    `;
+    const openBtn = emptyPrompt.querySelector('#btn-tree-open');
+    if (openBtn) openBtn.onclick = () => $('#btn-open-dir').click();
+    treeEl.appendChild(emptyPrompt);
+    return;
+  }
 
   function buildBranch(node) {
     if (node.kind === 'directory') {
@@ -1965,7 +1993,7 @@ window.addEventListener('keydown', async e => {
 /* ==========================================================================
    IN-APP FILE OPERATIONS & DIALOGS (RULE 6)
    ========================================================================== */
-function showModal({ title, desc, defaultValue = '', validateExtra = null, buttons = [] }) {
+function showModal({ title, desc, defaultValue = null, validateExtra = null, buttons = null, actions = null }) {
   return new Promise(resolve => {
     const modal = $('#modal');
     $('#modal-title').textContent = title || 'Notice';
@@ -1976,15 +2004,17 @@ function showModal({ title, desc, defaultValue = '', validateExtra = null, butto
     errEl.hidden = true;
     errEl.textContent = '';
 
-    if (defaultValue !== undefined && defaultValue !== null) {
+    const hasInput = (typeof defaultValue === 'string');
+    if (hasInput) {
       input.hidden = false;
       input.value = defaultValue;
     } else {
       input.hidden = true;
+      input.value = '';
     }
 
-    const actions = $('#modal-actions');
-    actions.innerHTML = '';
+    const actionsContainer = $('#modal-actions');
+    actionsContainer.innerHTML = '';
 
     const cleanup = () => {
       modal.hidden = true;
@@ -2008,22 +2038,27 @@ function showModal({ title, desc, defaultValue = '', validateExtra = null, butto
       return true;
     };
 
-    buttons.forEach(btn => {
+    const btnList = buttons || actions || [
+      { label: 'Cancel', value: false },
+      { label: 'OK', value: true, primary: true }
+    ];
+
+    btnList.forEach(btn => {
       const b = document.createElement('button');
       b.textContent = btn.label;
       if (btn.primary) b.className = 'btn-primary';
       b.onclick = () => {
-        if (btn.value !== false && !validate()) return;
+        if (btn.value !== false && !input.hidden && !validate()) return;
         cleanup();
-        resolve(input.hidden ? btn.value : input.value.trim());
+        resolve(input.hidden ? btn.value : (btn.value === false ? false : input.value.trim()));
       };
-      actions.appendChild(b);
+      actionsContainer.appendChild(b);
     });
 
     const onKey = e => {
       if (e.key === 'Escape') { cleanup(); resolve(false); }
       else if (e.key === 'Enter') {
-        const prim = actions.querySelector('.btn-primary') || actions.querySelector('button');
+        const prim = actionsContainer.querySelector('.btn-primary') || actionsContainer.querySelector('button');
         if (prim) prim.click();
       }
     };
@@ -2035,6 +2070,21 @@ function showModal({ title, desc, defaultValue = '', validateExtra = null, butto
 }
 
 async function promptCreateFile(type = 'md', targetDir = '') {
+  if (!rootTree || !rootTree.children) {
+    const choose = await showModal({
+      title: 'Select Workspace Folder',
+      desc: 'Please select a local folder to store your files before creating new notes.',
+      buttons: [
+        { label: 'Cancel', value: false },
+        { label: 'Select Folder', value: true, primary: true }
+      ]
+    });
+    if (choose) {
+      $('#btn-open-dir').click();
+    }
+    return;
+  }
+
   const isCanvas = (type === 'canvas');
   const ext = isCanvas ? '.canvas' : '.md';
 
@@ -2073,6 +2123,21 @@ async function promptCreateFile(type = 'md', targetDir = '') {
 }
 
 async function promptCreateFolder(parentDir = '') {
+  if (!rootTree || !rootTree.children) {
+    const choose = await showModal({
+      title: 'Select Workspace Folder',
+      desc: 'Please select a local folder before creating directories.',
+      buttons: [
+        { label: 'Cancel', value: false },
+        { label: 'Select Folder', value: true, primary: true }
+      ]
+    });
+    if (choose) {
+      $('#btn-open-dir').click();
+    }
+    return;
+  }
+
   const folderName = await showModal({
     title: 'New Folder',
     desc: 'Enter directory name:',
@@ -2255,15 +2320,31 @@ $('#btn-open-dir').onclick = async () => {
   try {
     await storage.stopWatch();
     const rootName = await storage.pickRoot();
+    if (!rootName) return;
     $('#vault-title').textContent = rootName;
+    const settingsFolder = $('#settings-folder-path');
+    if (settingsFolder) settingsFolder.textContent = 'Current: ' + rootName;
     imageCache.clear();
     await reloadTree();
     await setupWatcher();
     toast('Workspace mounted');
   } catch (err) {
+    if (String(err).includes('canceled')) return;
     toast('Folder selection error: ' + err);
   }
 };
+
+const welcomeOpenDir = $('#welcome-btn-open-dir');
+if (welcomeOpenDir) welcomeOpenDir.onclick = () => $('#btn-open-dir').click();
+
+const welcomeNewNote = $('#welcome-btn-new-note');
+if (welcomeNewNote) welcomeNewNote.onclick = () => promptCreateFile('md');
+
+const welcomeNewBoard = $('#welcome-btn-new-board');
+if (welcomeNewBoard) welcomeNewBoard.onclick = () => promptCreateFile('canvas');
+
+const welcomeSettings = $('#welcome-btn-settings');
+if (welcomeSettings) welcomeSettings.onclick = openSettingsModal;
 
 async function setupWatcher() {
   await storage.watch(async ({ paths }) => {
@@ -2303,17 +2384,28 @@ function toast(msg) {
    ========================================================================== */
 async function init() {
   updateDrawerState();
-  await reloadTree();
-  await setupWatcher();
+  try {
+    await reloadTree();
+    await setupWatcher();
+  } catch (err) {
+    console.warn('Initial tree load:', err);
+  }
 
-  // Restore previous tabs
+  // Restore previous tabs or open first file or show welcome stage
   if (openTabs.length) {
     const first = fileMap.get(openTabs[0].path);
-    if (first) await openFile(first.path);
+    if (first) {
+      await openFile(first.path);
+    } else {
+      showWelcomeStage(true);
+    }
   } else {
-    // Open first available note
     const firstMd = Array.from(fileMap.values()).find(f => f.type === 'md');
-    if (firstMd) await openFile(firstMd.path);
+    if (firstMd) {
+      await openFile(firstMd.path);
+    } else {
+      showWelcomeStage(true);
+    }
   }
 }
 init();

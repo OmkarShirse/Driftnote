@@ -158,6 +158,33 @@
     <main id="main">
       <!-- Markdown Stage -->
       <section id="doc-container">
+        <!-- Notion-Style Welcome Stage (Displayed when no note is open) -->
+        <div id="welcome-stage" class="welcome-stage" hidden>
+          <div class="welcome-card">
+            <div class="welcome-icon">✦</div>
+            <h2 class="welcome-title">Welcome to Driftnote</h2>
+            <p class="welcome-desc">A private, offline markdown workspace and infinite visual canvas.</p>
+            <div class="welcome-actions">
+              <button id="welcome-btn-open-dir" class="welcome-btn primary">
+                <span>📁</span>
+                <span>Open Workspace Folder</span>
+              </button>
+              <button id="welcome-btn-new-note" class="welcome-btn">
+                <span>📝</span>
+                <span>New Note</span>
+              </button>
+              <button id="welcome-btn-new-board" class="welcome-btn">
+                <span>◫</span>
+                <span>New Canvas</span>
+              </button>
+              <button id="welcome-btn-settings" class="welcome-btn">
+                <span>⚙️</span>
+                <span>Settings</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Notion-Style Note Header with Title & Properties -->
         <div id="note-header" class="note-header">
           <div class="note-header-inner">

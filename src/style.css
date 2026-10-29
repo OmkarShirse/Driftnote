@@ -147,9 +147,9 @@ html, body {
   transition: width 0.2s ease, opacity 0.2s ease;
 }
 
-/* When drawer is pinned and open, blend rail into the workspace seamlessly */
-#shell.drawer-pinned #rail {
-  display: none;
+/* When drawer is open and pinned, hide the collapsed rail so drawer replaces it seamlessly */
+#shell.drawer-open.drawer-pinned #rail {
+  display: none !important;
 }
 
 .rail-logo {
@@ -233,10 +233,8 @@ html, body {
    NOTION-STYLE SIDEBAR (DRAWER)
    ========================================================================== */
 .drawer-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--modal-backdrop);
-  z-index: 25;
+  display: none;
+  pointer-events: none;
 }
 
 #drawer {
@@ -250,6 +248,7 @@ html, body {
   padding: 10px 8px;
   gap: 6px;
   z-index: 30;
+  flex-shrink: 0;
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), margin-left 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -257,18 +256,25 @@ html, body {
   margin-left: calc(-1 * var(--drawer-width));
   transform: translateX(-100%);
   position: absolute;
+  pointer-events: none;
+  visibility: hidden;
 }
 
 #shell.drawer-open:not(.drawer-pinned) #drawer {
   position: absolute;
-  left: 0;
+  left: var(--rail-width);
   top: 0;
   box-shadow: 4px 0 24px var(--shadow-md);
+  pointer-events: auto;
+  visibility: visible;
 }
 
 #shell.drawer-open.drawer-pinned #drawer {
   position: relative;
+  left: 0;
   box-shadow: none;
+  pointer-events: auto;
+  visibility: visible;
 }
 
 /* Workspace Header */
@@ -432,6 +438,46 @@ html, body {
   flex-direction: column;
   gap: 1px;
   padding-top: 2px;
+}
+
+.tree-empty-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 14px;
+  text-align: center;
+  gap: 10px;
+  color: var(--mute);
+}
+
+.tree-empty-icon {
+  font-size: 26px;
+  opacity: 0.8;
+}
+
+.tree-empty-text {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--mute);
+}
+
+.btn-tree-open {
+  margin-top: 4px;
+  padding: 5px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.btn-tree-open:hover {
+  background: var(--hover);
+  color: var(--ink);
 }
 
 .tree-row {
@@ -716,6 +762,92 @@ body[data-type="img"] #img-viewer { display: flex; }
   overflow-y: auto;
   overflow-x: hidden;
   height: 100%;
+}
+
+/* ==========================================================================
+   NOTION-STYLE WELCOME STAGE (EMPTY STATE)
+   ========================================================================== */
+.welcome-stage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  background: var(--bg);
+}
+
+.welcome-card {
+  max-width: 480px;
+  width: 100%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.welcome-icon {
+  font-size: 44px;
+  color: var(--ink);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.welcome-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.welcome-desc {
+  font-size: 14px;
+  color: var(--mute);
+  line-height: 1.5;
+  margin: 0;
+  max-width: 380px;
+}
+
+.welcome-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 260px;
+  margin-top: 8px;
+}
+
+.welcome-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.welcome-btn:hover {
+  background: var(--hover);
+  border-color: var(--mute);
+}
+
+.welcome-btn.primary {
+  background: var(--acc);
+  color: var(--text-on-acc);
+  border-color: var(--acc);
+}
+
+.welcome-btn.primary:hover {
+  opacity: 0.92;
 }
 
 .note-header {
@@ -1766,9 +1898,26 @@ body[data-canvas-view="json"] #js { display: block; }
 
 /* Responsive Rules */
 @media (max-width: 760px) {
-  #drawer {
-    width: 82vw;
-    min-width: 82vw;
+  #rail {
+    display: none !important;
+  }
+  #shell.drawer-open #drawer,
+  #shell.drawer-open:not(.drawer-pinned) #drawer {
+    left: 0;
+    width: 84vw;
+    min-width: 84vw;
+    position: fixed;
+    top: 0;
+    height: 100vh;
+    z-index: 30;
+  }
+  #shell.drawer-open .drawer-backdrop {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    background: var(--modal-backdrop);
+    z-index: 25;
+    pointer-events: auto !important;
   }
   .outline-widget {
     display: none;
