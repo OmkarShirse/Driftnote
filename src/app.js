@@ -1,3 +1,22 @@
+(async () => {
+window.addEventListener('error', e => {
+  const banner = document.getElementById('app-error-banner');
+  const text = document.getElementById('app-error-text');
+  if (banner && text) {
+    text.textContent = `JS Error: ${e.message} (${e.filename}:${e.lineno})`;
+    banner.hidden = false;
+  }
+});
+
+window.addEventListener('unhandledrejection', e => {
+  const banner = document.getElementById('app-error-banner');
+  const text = document.getElementById('app-error-text');
+  if (banner && text) {
+    text.textContent = `Promise Rejection: ${e.reason?.message || e.reason}`;
+    banner.hidden = false;
+  }
+});
+
 /* ==========================================================================
    DRIFTNOTE APP - CORE LOGIC & REDESIGNED WORKSPACE
    ========================================================================== */
@@ -463,35 +482,84 @@ async function resolvePreviewImages(containerEl, currentNotePath) {
 }
 
 /* ==========================================================================
-   STORAGE ADAPTER
+   STORAGE ADAPTER & ERROR DISPLAY
    ========================================================================== */
+function showErrorBanner(msg) {
+  const b = $('#app-error-banner');
+  const t = $('#app-error-text');
+  if (b && t) {
+    t.textContent = msg;
+    b.hidden = false;
+  }
+  toast(msg);
+}
+
+function hideErrorBanner() {
+  const b = $('#app-error-banner');
+  if (b) b.hidden = true;
+}
+
+const btnCloseErr = $('#btn-close-error-banner');
+if (btnCloseErr) btnCloseErr.onclick = hideErrorBanner;
+
 const isTauri = typeof window !== 'undefined' && ('__TAURI__' in window || '__TAURI_INTERNALS__' in window);
 let storage = null;
 
 if (isTauri && (!window.__TAURI__ || !window.__TAURI__.core)) {
   const b = $('#tauri-missing-banner');
   if (b) b.hidden = false;
+  showErrorBanner('Tauri environment detected but window.__TAURI__.core is missing.');
 }
 
 if (isTauri && window.__TAURI__ && window.__TAURI__.core) {
   const core = window.__TAURI__.core;
+  async function invokeTauri(cmd, args) {
+    const start = performance.now();
+    console.log(`[IPC] [START] ${cmd}`, args !== undefined ? args : '');
+
+    let timeoutFired = false;
+    const watchdogTimer = setTimeout(() => {
+      timeoutFired = true;
+      showErrorBanner(`[WATCHDOG 3s] IPC command [${cmd}] is still pending or blocked!`);
+    }, 3000);
+
+    try {
+      const res = await core.invoke(cmd, args);
+      clearTimeout(watchdogTimer);
+      const duration = (performance.now() - start).toFixed(1);
+      console.log(`[IPC] [END] ${cmd} (${duration}ms)`);
+      if (timeoutFired) {
+        hideErrorBanner();
+      }
+      return res;
+    } catch (err) {
+      clearTimeout(watchdogTimer);
+      const duration = (performance.now() - start).toFixed(1);
+      console.error(`[IPC] [ERROR] ${cmd} (${duration}ms):`, err);
+      if (cmd !== 'list_tree' || !String(err).includes('No workspace folder selected')) {
+        showErrorBanner(`IPC [${cmd}] failed (${duration}ms): ${err}`);
+      }
+      throw err;
+    }
+  }
+
   storage = {
-    async pickRoot() { return await core.invoke('pick_root'); },
-    async listTree() { return await core.invoke('list_tree'); },
-    async readText(path) { return await core.invoke('read_text', { path }); },
-    async readBinary(path) { return await core.invoke('read_binary', { path }); },
+    async pickRoot() { return await invokeTauri('pick_root'); },
+    async listTree() { return await invokeTauri('list_tree'); },
+    async readText(path) { return await invokeTauri('read_text', { path }); },
+    async readBinary(path) { return await invokeTauri('read_binary', { path }); },
     async writeText(path, content, expectedMtime, force) {
-      return await core.invoke('write_text', { path, content, expectedMtime, force });
+      return await invokeTauri('write_text', { path, content, expectedMtime, force });
     },
-    async createFile(path) { return await core.invoke('create_file', { path }); },
-    async createDir(path) { return await core.invoke('create_dir', { path }); },
-    async rename(from, to) { return await core.invoke('rename', { from, to }); },
-    async trash(path) { return await core.invoke('trash', { path }); },
-    async startWatch() { return await core.invoke('start_watch'); },
-    async stopWatch() { return await core.invoke('stop_watch'); },
+    async createFile(path) { return await invokeTauri('create_file', { path }); },
+    async createDir(path) { return await invokeTauri('create_dir', { path }); },
+    async rename(from, to) { return await invokeTauri('rename', { from, to }); },
+    async trash(path) { return await invokeTauri('trash', { path }); },
+    async startWatch() { return await invokeTauri('start_watch'); },
+    async stopWatch() { return await invokeTauri('stop_watch'); },
     async watch(cb) {
       if (window.__TAURI__.event) {
-        return await window.__TAURI__.event.listen('fs-change', (event) => cb(event.payload));
+        return await window.__TAURI__.event.listen('fs-changed', (event) => cb(event.payload));
       }
     }
   };
@@ -951,7 +1019,15 @@ async function openFile(path) {
   updateNoteMetaChips();
 }
 
+let isReloadingTree = false;
+let reloadTreeDirty = false;
+
 async function reloadTree() {
+  if (isReloadingTree) {
+    reloadTreeDirty = true;
+    return;
+  }
+  isReloadingTree = true;
   try {
     const tree = await storage.listTree();
     rootTree = tree;
@@ -983,7 +1059,15 @@ async function reloadTree() {
     renderTree();
     renderTabs();
   } catch (err) {
-    toast('Tree reload error: ' + err);
+    rootTree = null;
+    renderTree();
+    throw err;
+  } finally {
+    isReloadingTree = false;
+    if (reloadTreeDirty) {
+      reloadTreeDirty = false;
+      reloadTree();
+    }
   }
 }
 
@@ -1070,14 +1154,49 @@ function renderTree() {
 /* ==========================================================================
    CANVAS CORE & PSEUDO-ELEMENT SHAPES
    ========================================================================== */
+let canvasFormat = { indent: '\t', lineEnding: '\n', hasTrailingNewline: true, compactColons: false };
+
+function compactColons(s) {
+  return s.replace(/"(?:[^"\\]|\\.)*"|: /g, m => m === ': ' ? ':' : m);
+}
+
+function detectCanvasFormat(text) {
+  if (!text) return { indent: '\t', lineEnding: '\n', hasTrailingNewline: true, compactColons: false };
+  const lineEnding = text.includes('\r\n') ? '\r\n' : '\n';
+  const hasTrailingNewline = text.endsWith('\n');
+  const indentMatch = text.match(/\n([ \t]+)"/);
+  const indent = indentMatch ? indentMatch[1] : '\t';
+  const colonMatch = text.match(/"(?:[^"\\]|\\.)*"\s*:/);
+  const isCompactColons = colonMatch ? !text.slice(colonMatch.index + colonMatch[0].length).startsWith(' ') : false;
+  return { indent, lineEnding, hasTrailingNewline, compactColons: isCompactColons };
+}
+
+function serializeCanvasData(data, format = canvasFormat) {
+  let serialized = JSON.stringify(data, null, format.indent || '\t');
+  if (format.compactColons) {
+    serialized = compactColons(serialized);
+  }
+  if (format.lineEnding === '\r\n') {
+    serialized = serialized.replace(/\r?\n/g, '\r\n');
+  }
+  if (format.hasTrailingNewline && !serialized.endsWith(format.lineEnding)) {
+    serialized += format.lineEnding;
+  }
+  return serialized;
+}
+
 function loadCanvas() {
   canvasBroken = false;
   const banner = $('#canvas-broken-banner');
   if (banner) banner.hidden = true;
 
   try {
-    D = JSON.parse(js.value || '{"nodes":[],"edges":[]}');
-    if (!Array.isArray(D.nodes) || !Array.isArray(D.edges)) throw new Error('Invalid schema');
+    const rawText = curFile && curFile.content ? curFile.content : (js.value || '{"nodes":[],"edges":[]}');
+    canvasFormat = detectCanvasFormat(rawText);
+    D = JSON.parse(rawText);
+    if (!D || typeof D !== 'object' || !Array.isArray(D.nodes) || !Array.isArray(D.edges)) {
+      throw new Error('Invalid schema');
+    }
   } catch (e) {
     canvasBroken = true;
     if (banner) banner.hidden = false;
@@ -1085,20 +1204,13 @@ function loadCanvas() {
     toast('Canvas corrupted. Overwrite prevented.');
     return;
   }
-
-  D.nodes.forEach(n => {
-    n.type = n.type || 'text';
-    n.x = Number(n.x) || 0;
-    n.y = Number(n.y) || 0;
-    n.width = Math.max(60, Number(n.width) || 240);
-    n.height = Math.max(40, Number(n.height) || 100);
-    n.styleAttributes = n.styleAttributes || {};
-  });
 }
 
 function commitCanvas() {
   if (!curFile || canvasBroken) return;
-  curFile.content = JSON.stringify(D, null, 1);
+  const newContent = serializeCanvasData(D, canvasFormat);
+  if (newContent === curFile.content) return;
+  curFile.content = newContent;
   js.value = curFile.content;
   queueSave();
   renderMinimap();
@@ -1119,15 +1231,31 @@ function sides(a, b, e) {
 }
 
 function edges(previewPath) {
-  svg.innerHTML = '<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>' +
+  let svgEl = document.getElementById('edges');
+  if (!svgEl) { svgEl = document.createElementNS('http://www.w3.org/2000/svg','svg'); svgEl.id = 'edges'; world.prepend(svgEl); }
+  svgEl.style.cssText = 'position:absolute;left:0;top:0;width:1px;height:1px;overflow:visible;color:var(--mute);z-index:0';
+  svgEl.innerHTML = '<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker></defs>' +
     D.edges.map(e => {
       const a = D.nodes.find(n => n.id === e.fromNode), b = D.nodes.find(n => n.id === e.toNode);
       if (!a || !b) return '';
       const [fs, ts] = sides(a, b, e), p = anc(a, fs), q = anc(b, ts);
       if (!p || !q) return '';
       const d = 'M' + p[0] + ' ' + p[1] + 'C' + (p[0] + DX[fs] * 80) + ' ' + (p[1] + DY[fs] * 80) + ' ' + (q[0] + DX[ts] * 80) + ' ' + (q[1] + DY[ts] * 80) + ' ' + q[0] + ' ' + q[1];
+
+      const sa = e.styleAttributes || {};
+      const isDashed = typeof sa.path === 'string' && sa.path.toLowerCase().includes('dashed');
+      const edgeClass = 'v' + (e.id === selE ? ' sel' : '') + (isDashed ? ' dashed' : '');
+
+      let labelHtml = '';
+      if (e.label) {
+        const mx = (p[0] + q[0]) / 2;
+        const my = (p[1] + q[1]) / 2;
+        labelHtml = `<text class="edge-label-text" x="${mx}" y="${my}" text-anchor="middle" dominant-baseline="central">${esc(e.label)}</text>`;
+      }
+
       return '<path class="h" data-id="' + esc(e.id) + '" d="' + d + '"/>' +
-             '<path class="v' + (e.id === selE ? ' sel' : '') + '" d="' + d + '"' + (e.toEnd === 'none' ? '' : ' marker-end="url(#ah)"') + '/>';
+             '<path class="' + edgeClass + '" d="' + d + '"' + (e.toEnd === 'none' ? '' : ' marker-end="url(#ah)"') + '/>' +
+             labelHtml;
     }).join('') + (previewPath ? '<path class="dr" d="' + previewPath + '"/>' : '');
 }
 
@@ -1199,6 +1327,11 @@ function draw() {
     const sa = n.styleAttributes || {};
     el.dataset.shape = sa.shape || 'default';
     el.dataset.border = sa.border || 'solid';
+
+    const textAlign = sa.textAlign || n.textAlign;
+    if (textAlign) {
+      el.dataset.align = textAlign.toLowerCase();
+    }
 
     const bw = Math.max(1, Math.min(6, Number(sa.borderWidth || n.borderWidth) || 2));
     el.style.setProperty('--node-border-width', bw + 'px');
@@ -1321,9 +1454,24 @@ function updateCardToolbar() {
   cardToolbar.style.top = screenY + 'px';
 
   const sa = n.styleAttributes || {};
-  $('#tb-shape').value = sa.shape || 'default';
+  const tbShape = $('#tb-shape');
+  if (tbShape) {
+    const shapeVal = sa.shape || 'default';
+    let opt = Array.from(tbShape.options).find(o => o.value === shapeVal);
+    if (!opt && shapeVal) {
+      opt = document.createElement('option');
+      opt.value = shapeVal;
+      opt.textContent = shapeVal.charAt(0).toUpperCase() + shapeVal.slice(1);
+      tbShape.appendChild(opt);
+    }
+    tbShape.value = shapeVal;
+  }
   $('#tb-border').value = sa.border || 'solid';
   $('#tb-width').value = sa.borderWidth || n.borderWidth || 2;
+  const tbAlign = $('#tb-align');
+  if (tbAlign) {
+    tbAlign.value = sa.textAlign || n.textAlign || 'left';
+  }
 
   const curColor = n.color ? String(n.color) : '';
   cardToolbar.querySelectorAll('.tb-swatch').forEach(b => {
@@ -1367,7 +1515,8 @@ $('#tb-shape').onchange = e => {
   if (!sel) return;
   const n = D.nodes.find(x => x.id === sel);
   if (!n) return;
-  n.styleAttributes = { ...(n.styleAttributes || {}), shape: e.target.value };
+  if (!n.styleAttributes) n.styleAttributes = {};
+  n.styleAttributes.shape = e.target.value;
   commitCanvas();
   draw();
 };
@@ -1376,16 +1525,31 @@ $('#tb-border').onchange = e => {
   if (!sel) return;
   const n = D.nodes.find(x => x.id === sel);
   if (!n) return;
-  n.styleAttributes = { ...(n.styleAttributes || {}), border: e.target.value };
+  if (!n.styleAttributes) n.styleAttributes = {};
+  n.styleAttributes.border = e.target.value;
   commitCanvas();
   draw();
 };
+
+const tbAlignInput = $('#tb-align');
+if (tbAlignInput) {
+  tbAlignInput.onchange = e => {
+    if (!sel) return;
+    const n = D.nodes.find(x => x.id === sel);
+    if (!n) return;
+    if (!n.styleAttributes) n.styleAttributes = {};
+    n.styleAttributes.textAlign = e.target.value;
+    commitCanvas();
+    draw();
+  };
+}
 
 $('#tb-width').oninput = e => {
   if (!sel) return;
   const n = D.nodes.find(x => x.id === sel);
   if (!n) return;
-  n.styleAttributes = { ...(n.styleAttributes || {}), borderWidth: Number(e.target.value) };
+  if (!n.styleAttributes) n.styleAttributes = {};
+  n.styleAttributes.borderWidth = Number(e.target.value);
   commitCanvas();
   draw();
 };
@@ -2346,29 +2510,87 @@ if (welcomeNewBoard) welcomeNewBoard.onclick = () => promptCreateFile('canvas');
 const welcomeSettings = $('#welcome-btn-settings');
 if (welcomeSettings) welcomeSettings.onclick = openSettingsModal;
 
-async function setupWatcher() {
-  await storage.watch(async ({ paths }) => {
-    if (curFile && paths.includes(curFile.path)) {
+let watcherDebounceTimer = null;
+let watcherPendingPaths = new Set();
+
+async function handleFsChangedBatch() {
+  const paths = Array.from(watcherPendingPaths);
+  watcherPendingPaths.clear();
+
+  if (curFile && paths.includes(curFile.path)) {
+    try {
+      const diskText = await storage.readText(curFile.path);
+
+      // 1. If disk text === curFile.content, do nothing
+      if (diskText === curFile.content) {
+        await reloadTree();
+        return;
+      }
+
+      // 2. Disk differs and file is dirty: show conflict dialog
       if (curFile.dirty) {
         await showConflictDialog(curFile.path);
-      } else {
-        curFile.content = await storage.readText(curFile.path);
-        await reloadTree();
-        const fresh = fileMap.get(curFile.path);
-        if (fresh) curFile.mtime = fresh.mtime;
-
-        if (curFile.type === 'md') {
-          ed.value = curFile.content;
-          await updatePreview();
-        } else if (curFile.type === 'cv') {
-          loadCanvas();
-          draw();
-        }
-        toast('Updated from disk');
+        return;
       }
-    } else {
+
+      // 3. Disk differs and file not dirty: update content while preserving UI state
+      curFile.content = diskText;
+      await reloadTree();
+      const fresh = fileMap.get(curFile.path);
+      if (fresh) curFile.mtime = fresh.mtime;
+
+      if (curFile.type === 'md') {
+        const isEdFocused = document.activeElement === ed;
+        if (!isEdFocused) {
+          const selStart = ed.selectionStart;
+          const selEnd = ed.selectionEnd;
+          const sTop = ed.scrollTop;
+          const sLeft = ed.scrollLeft;
+
+          ed.value = curFile.content;
+
+          ed.selectionStart = Math.min(selStart, ed.value.length);
+          ed.selectionEnd = Math.min(selEnd, ed.value.length);
+          ed.scrollTop = sTop;
+          ed.scrollLeft = sLeft;
+        }
+        await updatePreview();
+      } else if (curFile.type === 'cv') {
+        const isJsFocused = document.activeElement === js;
+        if (!isJsFocused) {
+          js.value = curFile.content;
+        }
+        const prevV = { ...V };
+        const prevSel = sel;
+        const prevSelE = selE;
+
+        loadCanvas();
+        draw();
+
+        V = prevV;
+        sel = prevSel;
+        selE = prevSelE;
+        view();
+        renderMinimap();
+      }
+      toast('Updated from disk');
+    } catch (_) {
       await reloadTree();
     }
+  } else {
+    await reloadTree();
+  }
+}
+
+async function setupWatcher() {
+  await storage.watch(({ paths }) => {
+    if (Array.isArray(paths)) {
+      paths.forEach(p => watcherPendingPaths.add(p));
+    }
+    if (watcherDebounceTimer) clearTimeout(watcherDebounceTimer);
+    watcherDebounceTimer = setTimeout(() => {
+      handleFsChangedBatch();
+    }, 300);
   });
 }
 
@@ -2388,7 +2610,25 @@ async function init() {
     await reloadTree();
     await setupWatcher();
   } catch (err) {
-    console.warn('Initial tree load:', err);
+    if (String(err).includes('No workspace folder selected')) {
+      try {
+        const rootName = await storage.pickRoot();
+        if (rootName) {
+          const vaultTitle = $('#vault-title');
+          if (vaultTitle) vaultTitle.textContent = rootName;
+          const settingsFolder = $('#settings-folder-path');
+          if (settingsFolder) settingsFolder.textContent = 'Current: ' + rootName;
+          await reloadTree();
+          await setupWatcher();
+        }
+      } catch (pickErr) {
+        if (!String(pickErr).includes('canceled')) {
+          showErrorBanner('Workspace selection failed: ' + pickErr);
+        }
+      }
+    } else {
+      showErrorBanner('Workspace error: ' + err);
+    }
   }
 
   // Restore previous tabs or open first file or show welcome stage
@@ -2409,3 +2649,5 @@ async function init() {
   }
 }
 init();
+
+})();

@@ -21,6 +21,11 @@ fn main() {
         }
     }
 
+    // WebKitGTK DMA-BUF renderer workaround for Linux display drivers
+    if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     driftnote_lib::run();
 }
 

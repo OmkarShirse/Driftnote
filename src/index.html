@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost; font-src 'self'; form-action 'none'; base-uri 'none';">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Driftnote</title>
@@ -9,6 +8,11 @@
 </head>
 <body data-type="md" data-mode="read" data-canvas-view="board">
 
+<div id="app-error-banner" class="banner banner-error" hidden>
+  <strong>Error:</strong>
+  <span id="app-error-text" style="flex:1"></span>
+  <button id="btn-close-error-banner" style="background:transparent;border:none;cursor:pointer;color:inherit;font-size:16px;padding:0 4px;" aria-label="Dismiss">&times;</button>
+</div>
 <div id="tauri-missing-banner" class="banner banner-error" hidden>
   <strong>Critical Platform Error:</strong> Tauri environment detected but <code>window.__TAURI__.core</code> is missing. IPC disabled.
 </div>
@@ -265,6 +269,11 @@
               <option value="dotted">Dotted</option>
               <option value="none">None</option>
             </select>
+            <select id="tb-align" title="Text alignment">
+              <option value="left">Left</option>
+              <option value="center">Center</option>
+              <option value="right">Right</option>
+            </select>
             <input type="range" id="tb-width" min="1" max="6" value="2" title="Border width">
             <div class="tb-colors">
               <button data-c="" class="tb-swatch tb-none" title="No color">∅</button>
@@ -447,6 +456,7 @@
 
 <script src="vendor/marked.min.js"></script>
 <script src="vendor/purify.min.js"></script>
+<script src="diag.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

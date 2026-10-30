@@ -103,6 +103,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -1286,6 +1290,24 @@ body[data-mode="read"] #pv { display: block; }
 .node[data-border="dotted"]::before { border-style: dotted; }
 .node[data-border="none"]::before { border-style: none; }
 
+.node[data-align="left"] .body { text-align: left !important; }
+.node[data-align="center"] .body { text-align: center !important; }
+.node[data-align="right"] .body { text-align: right !important; }
+
+#edges path.v { fill: none; stroke: currentColor; stroke-width: 2; pointer-events: none; }
+#edges path.v.sel { stroke: var(--acc); stroke-width: 3; }
+#edges path.v.dashed { stroke-dasharray: 6 5; }
+#edges path.h { fill: none; stroke: transparent; stroke-width: 14; cursor: pointer; pointer-events: stroke; }
+#edges path.dr { fill: none; stroke: var(--acc); stroke-width: 2; stroke-dasharray: 5 4; }
+.edge-label-text {
+  font-family: var(--font-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  font-size: 11px;
+  font-weight: 500;
+  fill: var(--ink);
+  pointer-events: none;
+  user-select: none;
+}
+
 .node[data-color="1"]::before { border-color: var(--c-1); background: color-mix(in srgb, var(--c-1) 10%, var(--card-bg)); }
 .node[data-color="2"]::before { border-color: var(--c-2); background: color-mix(in srgb, var(--c-2) 10%, var(--card-bg)); }
 .node[data-color="3"]::before { border-color: var(--c-3); background: color-mix(in srgb, var(--c-3) 10%, var(--card-bg)); }
@@ -1477,10 +1499,16 @@ body[data-canvas-view="json"] #js { display: block; }
   position: fixed;
   inset: 0;
   background: var(--modal-backdrop);
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   z-index: 100;
+  pointer-events: none;
+}
+
+.modal-overlay:not([hidden]), #modal:not([hidden]) {
+  display: flex !important;
+  pointer-events: auto !important;
 }
 
 [hidden] { display: none !important; }
@@ -1911,7 +1939,7 @@ body[data-canvas-view="json"] #js { display: block; }
     height: 100vh;
     z-index: 30;
   }
-  #shell.drawer-open .drawer-backdrop {
+  #shell.drawer-open:not(.drawer-pinned) .drawer-backdrop:not([hidden]) {
     display: block !important;
     position: fixed;
     inset: 0;
