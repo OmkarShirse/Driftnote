@@ -1905,6 +1905,91 @@ body[data-canvas-view="json"] #js { display: block; }
   box-shadow: 0 6px 20px var(--shadow-lg);
   font-size: 12.5px;
   z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toast-action-btn {
+  background: none;
+  border: 1px solid var(--line);
+  color: var(--acc);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.toast-action-btn:hover {
+  background: var(--hover);
+}
+
+.btn-danger {
+  background: var(--bad) !important;
+  color: #ffffff !important;
+  border-color: var(--bad) !important;
+}
+.btn-danger:hover {
+  filter: brightness(0.9);
+}
+
+.row-more-btn {
+  background: none;
+  border: none;
+  color: var(--mute);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s ease, color 0.1s ease;
+  margin-left: auto;
+}
+.row-more-btn:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.row-popover-menu {
+  position: fixed;
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 16px var(--shadow-md, rgba(0,0,0,0.15));
+  border-radius: 6px;
+  padding: 4px;
+  min-width: 150px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}
+.row-popover-menu .menu-item {
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  color: var(--ink);
+  border-radius: 4px;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.1s ease;
+}
+.row-popover-menu .menu-item:hover {
+  background: var(--hover);
+}
+.row-popover-menu .menu-item.danger {
+  color: var(--bad);
+}
+.row-popover-menu .menu-item.danger:hover {
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+}
+.row-popover-menu .menu-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 4px 0;
 }
 
 /* Status Pill */
@@ -1956,4 +2041,120 @@ body[data-canvas-view="json"] #js { display: block; }
   .md-inner-wrapper {
     padding: 0 20px;
   }
+}
+.tree-dir { display: flex; flex-direction: column; }
+.tree-sub { display: flex; flex-direction: column; gap: 1px; margin-left: 14px; padding-left: 4px; border-left: 1px solid var(--line, #dcdfe3); }
+.tree-sub.collapsed { display: none; }
+.tree-row .chevron { width: 14px; flex: none; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; color: var(--faint, #72777d); }
+.tree-row .icon { flex: none; }
+.tree-row .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Card Link Handle & Resize Corner */
+.node .hd {
+  position: absolute;
+  right: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--acc);
+  cursor: crosshair;
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 0.12s ease;
+  z-index: 10;
+}
+.node:hover .hd,
+.node.sel .hd {
+  opacity: 1;
+}
+
+.node .rz {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  pointer-events: auto;
+  z-index: 10;
+}
+
+/* Tabs Typography & Icon */
+.tab-icon {
+  flex-shrink: 0;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+}
+.tab-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Shortcuts Dialog Key & Label */
+.shortcut-label {
+  flex: 1;
+  color: var(--ink);
+  font-size: 13px;
+}
+.shortcut-key {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  background: var(--panel-alt);
+  border: 1px solid var(--line);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--mute);
+}
+
+/* Command Palette Item Elements */
+.palette-item-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  color: var(--mute);
+}
+.palette-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.palette-item-title {
+  color: var(--ink);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.palette-item-badge {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+  background: var(--panel-alt);
+  border: 1px solid var(--line);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+/* Links, Utility & State Colors */
+.canvas-link {
+  color: var(--acc);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.canvas-link:hover {
+  color: var(--acchov);
+}
+.mute {
+  color: var(--mute);
+}
+.bad {
+  color: var(--bad);
+  border-color: var(--bad) !important;
 }
