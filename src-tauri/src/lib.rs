@@ -758,7 +758,7 @@ async fn rename(from: String, to: String, state: State<'_, AppState>) -> Result<
 }
 
 #[tauri::command]
-async fn trash(path: String, state: State<'_, AppState>) -> Result<(), String> {
+async fn trash(path: String, app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
     let t0 = current_timestamp();
     eprintln!("[{t0}] [START] trash path={path}");
     let root = {
@@ -768,53 +768,53 @@ async fn trash(path: String, state: State<'_, AppState>) -> Result<(), String> {
             .ok_or_else(|| "No workspace folder selected".to_string())?
             .clone()
     };
-    let (src_parent, target) = validate_write_target(&root, &path)?;
 
-    let trash_path = root.join(TRASH_DIR);
-    if trash_path.exists() {
-        let meta = fs::symlink_metadata(&trash_path)
-            .map_err(|e| format!("Failed reading trash metadata: {e}"))?;
-        if !meta.is_dir() || meta.file_type().is_symlink() {
-            return Err(".driftnote-trash is not a valid directory".into());
-        }
-    } else {
-        fs::create_dir_all(&trash_path).map_err(|e| format!("Failed creating trash folder: {e}"))?;
-    }
-
-    let file_name = target
-        .file_name()
-        .and_then(|s| s.to_str())
-        .ok_or_else(|| "Invalid file name".to_string())?;
-
-    let destination = loop {
-        let counter = TRASH_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        let candidate = trash_path.join(format!("{nanos}_{counter}_{file_name}"));
-        if !candidate.exists() {
-            break candidate;
-        }
-    };
-
-    // Stamp recent_writes BEFORE move to trash
-    let now = Instant::now();
-    {
-        let mut rw = state
-            .recent_writes
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        rw.insert(target.clone(), now);
-        rw.insert(canonicalize_path(&target), now);
-        rw.insert(destination.clone(), now);
-        rw.insert(canonicalize_path(&destination), now);
-    }
-
-    let target_clone = target.clone();
-    let destination_clone = destination.clone();
+    let app_clone = app.clone();
     let res = tauri::async_runtime::spawn_blocking(move || {
-        fs::rename(&target_clone, &destination_clone).map_err(|e| format!("Move to trash failed: {e}"))?;
+        let (src_parent, target) = validate_write_target(&root, &path)?;
+
+        let trash_path = root.join(TRASH_DIR);
+        if trash_path.exists() {
+            let meta = fs::symlink_metadata(&trash_path)
+                .map_err(|e| format!("Failed reading trash metadata: {e}"))?;
+            if !meta.is_dir() || meta.file_type().is_symlink() {
+                return Err(".driftnote-trash is not a valid directory".into());
+            }
+        } else {
+            fs::create_dir_all(&trash_path).map_err(|e| format!("Failed creating trash folder: {e}"))?;
+        }
+
+        let file_name = target
+            .file_name()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| "Invalid file name".to_string())?;
+
+        let dest_filename = loop {
+            let counter = TRASH_COUNTER.fetch_add(1, Ordering::Relaxed);
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos();
+            let candidate_name = format!("{nanos}_{counter}_{file_name}");
+            let candidate = trash_path.join(&candidate_name);
+            if !candidate.exists() {
+                break candidate_name;
+            }
+        };
+        let destination = trash_path.join(&dest_filename);
+
+        // Stamp recent_writes BEFORE move to trash
+        let now = Instant::now();
+        {
+            let st = app_clone.state::<AppState>();
+            let mut rw = st.recent_writes.lock().unwrap_or_else(|e| e.into_inner());
+            rw.insert(target.clone(), now);
+            rw.insert(canonicalize_path(&target), now);
+            rw.insert(destination.clone(), now);
+            rw.insert(canonicalize_path(&destination), now);
+        }
+
+        fs::rename(&target, &destination).map_err(|e| format!("Move to trash failed: {e}"))?;
 
         let p = File::open(&src_parent).map_err(|e| format!("Parent open failed: {e}"))?;
         p.sync_all()
@@ -824,27 +824,167 @@ async fn trash(path: String, state: State<'_, AppState>) -> Result<(), String> {
         tp.sync_all()
             .map_err(|e| format!("Trash dir fsync failed: {e}"))?;
 
-        Ok(destination_clone)
+        let now_after = Instant::now();
+        {
+            let st = app_clone.state::<AppState>();
+            let mut rw = st.recent_writes.lock().unwrap_or_else(|e| e.into_inner());
+            rw.insert(target.clone(), now_after);
+            rw.insert(canonicalize_path(&target), now_after);
+            rw.insert(destination.clone(), now_after);
+            rw.insert(canonicalize_path(&destination), now_after);
+        }
+
+        Ok(dest_filename)
     })
     .await
     .map_err(|e| format!("Join error: {e}"))?;
 
     match res {
-        Ok(destination) => {
-            let now_after = Instant::now();
-            let mut rw = state
-                .recent_writes
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            rw.insert(target.clone(), now_after);
-            rw.insert(canonicalize_path(&target), now_after);
-            rw.insert(destination.clone(), now_after);
-            rw.insert(canonicalize_path(&destination), now_after);
+        Ok(dest_name) => {
             eprintln!("[{}] [END] trash (success=true)", current_timestamp());
-            Ok(())
+            Ok(dest_name)
         }
         Err(e) => {
             eprintln!("[{}] [END] trash (success=false)", current_timestamp());
+            Err(e)
+        }
+    }
+}
+
+#[tauri::command]
+async fn restore_from_trash(
+    trash_name: String,
+    original_path: Option<String>,
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<u64, String> {
+    let t0 = current_timestamp();
+    eprintln!("[{t0}] [START] restore_from_trash trash_name={trash_name}");
+    let root = {
+        let guard = state.root_dir.lock().unwrap_or_else(|e| e.into_inner());
+        guard
+            .as_ref()
+            .ok_or_else(|| "No workspace folder selected".to_string())?
+            .clone()
+    };
+
+    let trash_path_obj = Path::new(&trash_name);
+    let mut components = trash_path_obj.components();
+    let comp_name = match (components.next(), components.next()) {
+        (Some(Component::Normal(c)), None) => c.to_string_lossy().to_string(),
+        _ => return Err("trash_name must contain exactly one path component".into()),
+    };
+
+    let ext = trash_path_obj
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .ok_or_else(|| "Missing file extension in trash target".to_string())?;
+
+    if !WRITE_EXTS.contains(&ext.as_str()) {
+        return Err(format!("File extension .{ext} not permitted for restore"));
+    }
+
+    let rel_target = match original_path {
+        Some(ref p) if !p.trim().is_empty() => p.clone(),
+        _ => {
+            let parts: Vec<&str> = comp_name.splitn(3, '_').collect();
+            if parts.len() == 3 {
+                parts[2].to_string()
+            } else {
+                comp_name.clone()
+            }
+        }
+    };
+
+    let app_clone = app.clone();
+    let res = tauri::async_runtime::spawn_blocking(move || {
+        let (dst_parent, dest_target) = validate_write_target(&root, &rel_target)?;
+
+        let trash_dir_path = root.join(TRASH_DIR);
+        let trash_meta = fs::symlink_metadata(&trash_dir_path)
+            .map_err(|e| format!("Failed reading .driftnote-trash metadata: {e}"))?;
+        if !trash_meta.is_dir() || trash_meta.file_type().is_symlink() {
+            return Err(".driftnote-trash is not a directory or is a symlink".into());
+        }
+        let trash_dir_canon = trash_dir_path
+            .canonicalize()
+            .map_err(|e| format!("Canonicalizing trash dir failed: {e}"))?;
+
+        let src_candidate = trash_dir_path.join(&comp_name);
+        if !src_candidate.exists() {
+            return Err("Trash file does not exist".into());
+        }
+        let src_meta = fs::symlink_metadata(&src_candidate)
+            .map_err(|e| format!("Failed reading trash file metadata: {e}"))?;
+        if !src_meta.file_type().is_file() || src_meta.file_type().is_symlink() {
+            return Err("Target in trash is not a regular file".into());
+        }
+        let src_canon = src_candidate
+            .canonicalize()
+            .map_err(|e| format!("Failed canonicalizing trash source: {e}"))?;
+        if !src_canon.starts_with(&trash_dir_canon) {
+            return Err("Trash source escapes .driftnote-trash boundary".into());
+        }
+
+        if !dst_parent.exists() {
+            return Err("Destination parent folder does not exist".into());
+        }
+        if dest_target.exists() {
+            return Err("Destination file already exists".into());
+        }
+
+        let now = Instant::now();
+        {
+            let st = app_clone.state::<AppState>();
+            let mut rw = st.recent_writes.lock().unwrap_or_else(|e| e.into_inner());
+            rw.insert(dest_target.clone(), now);
+            rw.insert(canonicalize_path(&dest_target), now);
+            rw.insert(src_canon.clone(), now);
+            rw.insert(canonicalize_path(&src_canon), now);
+        }
+
+        fs::hard_link(&src_canon, &dest_target).map_err(|e| match e.kind() {
+            std::io::ErrorKind::AlreadyExists => "Destination file already exists".to_string(),
+            _ => format!("Restore hard_link failed: {e}"),
+        })?;
+
+        if let Err(e) = fs::remove_file(&src_canon) {
+            let _ = fs::remove_file(&dest_target);
+            return Err(format!("Failed unlinking trash source: {e}"));
+        }
+
+        let dp = File::open(&dst_parent).map_err(|e| format!("Dest parent open failed: {e}"))?;
+        dp.sync_all()
+            .map_err(|e| format!("Dest parent fsync failed: {e}"))?;
+
+        let tp = File::open(&trash_dir_path).map_err(|e| format!("Trash dir open failed: {e}"))?;
+        tp.sync_all()
+            .map_err(|e| format!("Trash dir fsync failed: {e}"))?;
+
+        let mtime = file_mtime(&dest_target);
+
+        let now_after = Instant::now();
+        {
+            let st = app_clone.state::<AppState>();
+            let mut rw = st.recent_writes.lock().unwrap_or_else(|e| e.into_inner());
+            rw.insert(dest_target.clone(), now_after);
+            rw.insert(canonicalize_path(&dest_target), now_after);
+            rw.insert(src_canon.clone(), now_after);
+        }
+
+        Ok(mtime)
+    })
+    .await
+    .map_err(|e| format!("Join error: {e}"))?;
+
+    match res {
+        Ok(mtime) => {
+            eprintln!("[{}] [END] restore_from_trash (success=true)", current_timestamp());
+            Ok(mtime)
+        }
+        Err(e) => {
+            eprintln!("[{}] [END] restore_from_trash (success=false)", current_timestamp());
             Err(e)
         }
     }
@@ -1058,6 +1198,7 @@ pub fn run() {
             create_dir,
             rename,
             trash,
+            restore_from_trash,
             start_watch,
             stop_watch
         ])
