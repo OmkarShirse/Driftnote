@@ -29,7 +29,7 @@ const DEFAULT_KEYMAP = {
   'file:new-note': 'Ctrl+N',
   'file:new-canvas': 'Ctrl+Shift+N',
   'file-explorer:move-file': 'Ctrl+M',
-  'app:delete-file': 'Ctrl+Delete',
+  'app:delete-file': '',
   'workspace:next-tab': 'Ctrl+PageDown',
   'workspace:previous-tab': 'Ctrl+PageUp',
   'workspace:close-tab': 'Ctrl+W',
@@ -41,10 +41,6 @@ const DEFAULT_KEYMAP = {
   'app:switch-vault': 'F1',
   'app:reload': 'F5',
   'editor:toggle-highlight': 'F9',
-  'editor:insert-footnote': 'F12',
-  'slides:start': 'F4',
-  'obsidian-mind-map:app:markmap-preview': 'F4',
-  'pexels-banner:open-pixel-banner-select': 'F8',
   'app:open-shortcuts': 'Ctrl+/'
 };
 
@@ -65,10 +61,6 @@ const ACTION_DESCRIPTIONS = {
   'app:switch-vault': 'Open vault / folder',
   'app:reload': 'Reload workspace tree',
   'editor:toggle-highlight': 'Toggle highlight (==text==)',
-  'editor:insert-footnote': 'Insert footnote reference',
-  'slides:start': 'Start slide presentation',
-  'obsidian-mind-map:app:markmap-preview': 'Mind map preview',
-  'pexels-banner:open-pixel-banner-select': 'Choose banner image',
   'app:open-shortcuts': 'Open keyboard shortcuts'
 };
 
@@ -297,10 +289,14 @@ function showWelcomeStage(show) {
   if (mdStage) mdStage.hidden = show;
 }
 
-async function closeTab(path) {
+async function closeTab(path, skipSave = false) {
   const target = fileMap.get(path);
-  if (target && target.dirty) {
-    await saveFile(target, false);
+  if (!skipSave && target && target.dirty) {
+    const res = await saveFile(target, false);
+    if (!res.ok) {
+      toast('Cannot close tab: saving changes failed');
+      return;
+    }
   }
   const idx = openTabs.findIndex(t => t.path === path);
   if (idx !== -1) {
@@ -555,6 +551,9 @@ if (isTauri && window.__TAURI__ && window.__TAURI__.core) {
     async createDir(path) { return await invokeTauri('create_dir', { path }); },
     async rename(from, to) { return await invokeTauri('rename', { from, to }); },
     async trash(path) { return await invokeTauri('trash', { path }); },
+    async restoreFromTrash(trashName, originalPath) {
+      return await invokeTauri('restore_from_trash', { trashName, originalPath });
+    },
     async startWatch() { return await invokeTauri('start_watch'); },
     async stopWatch() { return await invokeTauri('stop_watch'); },
     async watch(cb) {
@@ -618,8 +617,25 @@ if (isTauri && window.__TAURI__ && window.__TAURI__.core) {
       }
     }
     async trash(path) {
+      const item = this.data[path];
       delete this.data[path];
+      if (!this.trashStore) this.trashStore = {};
+      const trashName = `${Date.now()}_0_${path.split('/').pop()}`;
+      this.trashStore[trashName] = { content: item ? item.content : '', path };
       this.save();
+      return trashName;
+    }
+    async restoreFromTrash(trashName, originalPath) {
+      if (!this.trashStore || !this.trashStore[trashName]) {
+        throw new Error('Trash item not found');
+      }
+      const item = this.trashStore[trashName];
+      const target = originalPath || item.path;
+      const m = Date.now();
+      this.data[target] = { content: item.content, mtime: m };
+      delete this.trashStore[trashName];
+      this.save();
+      return m;
     }
     async startWatch() {}
     async stopWatch() {}
@@ -752,6 +768,9 @@ $('#btn-view-mode').onclick = () => {
 /* ==========================================================================
    FILE SAVING & CONFLICT RESOLUTION
    ========================================================================== */
+const inFlightSaves = new Map();
+const savePendingRerun = new Set();
+
 function queueSave() {
   if (!curFile || !autosaveEnabled || canvasBroken) return;
   curFile.dirty = true;
@@ -770,29 +789,61 @@ function queueSave() {
 }
 
 async function saveFile(fileToSave, force = false) {
-  if (!fileToSave || !fileToSave.dirty || canvasBroken) return;
+  if (!fileToSave || canvasBroken) {
+    return { ok: false, error: 'Invalid file or corrupted canvas' };
+  }
+  if (!fileToSave.dirty) {
+    return { ok: true, mtime: fileToSave.mtime };
+  }
   if (!force && fileToSave.mtime === undefined) {
     toast('Error: File mtime unknown. Refusing save.');
-    return;
+    return { ok: false, error: 'File mtime unknown' };
   }
 
+  if (inFlightSaves.has(fileToSave.path)) {
+    savePendingRerun.add(fileToSave.path);
+    await inFlightSaves.get(fileToSave.path);
+    if (!fileToSave.dirty) {
+      return { ok: true, mtime: fileToSave.mtime };
+    }
+    return await saveFile(fileToSave, force);
+  }
+
+  savePendingRerun.delete(fileToSave.path);
+
+  let resolveSavePromise;
+  const currentPromise = new Promise(res => { resolveSavePromise = res; });
+  inFlightSaves.set(fileToSave.path, currentPromise);
+
+  const contentToWrite = fileToSave.content;
   setSaveBadge('saving');
+
   try {
     const newMtime = await storage.writeText(
       fileToSave.path,
-      fileToSave.content,
+      contentToWrite,
       fileToSave.mtime,
       force
     );
     fileToSave.mtime = newMtime;
-    fileToSave.dirty = false;
-    const openT = openTabs.find(t => t.path === fileToSave.path);
-    if (openT) openT.dirty = false;
-    renderTabs();
 
-    if (curFile && curFile.path === fileToSave.path) {
-      setSaveBadge('saved');
+    if (fileToSave.content === contentToWrite) {
+      fileToSave.dirty = false;
+      const openT = openTabs.find(t => t.path === fileToSave.path);
+      if (openT) openT.dirty = false;
+      renderTabs();
+
+      if (curFile && curFile.path === fileToSave.path) {
+        setSaveBadge('saved');
+      }
+    } else {
+      fileToSave.dirty = true;
+      queueSave();
     }
+
+    const result = { ok: true, mtime: newMtime };
+    resolveSavePromise(result);
+    return result;
   } catch (err) {
     const errMsg = String(err);
     if (errMsg.includes('Conflict')) {
@@ -802,15 +853,24 @@ async function saveFile(fileToSave, force = false) {
       setSaveBadge('error');
       toast('Save failed: ' + errMsg);
     }
+    const result = { ok: false, error: errMsg };
+    resolveSavePromise(result);
+    return result;
+  } finally {
+    inFlightSaves.delete(fileToSave.path);
+    if (savePendingRerun.has(fileToSave.path) && fileToSave.dirty) {
+      savePendingRerun.delete(fileToSave.path);
+      saveFile(fileToSave, force);
+    }
   }
 }
 
 async function saveActiveFile() {
-  if (!curFile) return;
+  if (!curFile) return { ok: false, error: 'No active file' };
   if (curFile.type === 'md') curFile.content = ed.value;
   else if (curFile.type === 'cv' && !canvasBroken) curFile.content = js.value;
   curFile.dirty = true;
-  await saveFile(curFile, false);
+  return await saveFile(curFile, false);
 }
 
 async function showConflictDialog(path) {
@@ -827,7 +887,8 @@ async function showConflictDialog(path) {
   });
 
   if (choice === 'keep_mine') {
-    await saveFile(f, true);
+    const res = await saveFile(f, true);
+    if (!res.ok) return;
   } else if (choice === 'load_disk') {
     f.content = await storage.readText(path);
     await reloadTree();
@@ -876,7 +937,11 @@ async function openImageViewer(path) {
   if (!f) return;
 
   if (curFile && curFile.dirty) {
-    await saveFile(curFile, false);
+    const res = await saveFile(curFile, false);
+    if (!res.ok) {
+      toast('Cannot open image: saving active file failed');
+      return;
+    }
   }
 
   curPath = path;
@@ -977,7 +1042,11 @@ async function openFile(path) {
   if (!f) return;
 
   if (curFile && curFile.dirty && curFile.path !== path) {
-    await saveFile(curFile, false);
+    const res = await saveFile(curFile, false);
+    if (!res.ok) {
+      toast('Cannot switch note: saving active file failed');
+      return;
+    }
   }
 
   if (f.type === 'img') {
@@ -1071,6 +1140,92 @@ async function reloadTree() {
   }
 }
 
+function loadSettings() {
+  try {
+    return JSON.parse(localStorage.getItem('dn_settings') || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveSettings(settings) {
+  localStorage.setItem('dn_settings', JSON.stringify(settings));
+}
+
+let appSettings = loadSettings();
+let allowRenameTrash = !!appSettings.allowRenameTrash;
+
+function isPathGuarded(path) {
+  if (!path || path === '.' || path === '/') return true;
+  const parts = path.split('/');
+  return parts.some(p => p.startsWith('.') || p === '.driftnote-trash');
+}
+
+function isValidNoteExtension(path) {
+  const ext = (path || '').split('.').pop().toLowerCase();
+  return ext === 'md' || ext === 'canvas';
+}
+
+let activeRowMenu = null;
+
+function closeRowMenu() {
+  if (activeRowMenu) {
+    activeRowMenu.remove();
+    activeRowMenu = null;
+  }
+}
+
+document.addEventListener('click', e => {
+  if (activeRowMenu && !activeRowMenu.contains(e.target)) closeRowMenu();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && activeRowMenu) closeRowMenu();
+});
+
+function openRowMenu(anchorEl, path, isDir) {
+  closeRowMenu();
+  const menu = document.createElement('div');
+  menu.className = 'row-popover-menu';
+
+  if (isDir) {
+    const actions = [
+      { label: 'New note here', fn: () => promptCreateFile('md', path) },
+      { label: 'New canvas here', fn: () => promptCreateFile('canvas', path) },
+      { label: 'New folder here', fn: () => promptCreateFolder(path) }
+    ];
+    actions.forEach(item => {
+      const btn = document.createElement('button');
+      btn.className = 'menu-item';
+      btn.textContent = item.label;
+      btn.onclick = (e) => { e.stopPropagation(); closeRowMenu(); item.fn(); };
+      menu.appendChild(btn);
+    });
+  } else {
+    if (!allowRenameTrash || isPathGuarded(path) || !isValidNoteExtension(path)) return;
+    const renameBtn = document.createElement('button');
+    renameBtn.className = 'menu-item';
+    renameBtn.textContent = 'Rename';
+    renameBtn.onclick = (e) => { e.stopPropagation(); closeRowMenu(); promptRename(path); };
+    menu.appendChild(renameBtn);
+
+    const div = document.createElement('div');
+    div.className = 'menu-divider';
+    menu.appendChild(div);
+
+    const trashBtn = document.createElement('button');
+    trashBtn.className = 'menu-item danger';
+    trashBtn.textContent = 'Move to trash';
+    trashBtn.onclick = (e) => { e.stopPropagation(); closeRowMenu(); promptDelete(path); };
+    menu.appendChild(trashBtn);
+  }
+
+  document.body.appendChild(menu);
+  const rect = anchorEl.getBoundingClientRect();
+  menu.style.top = `${rect.bottom + 4}px`;
+  menu.style.left = `${Math.max(10, rect.right - 150)}px`;
+  activeRowMenu = menu;
+}
+
 function renderTree() {
   treeEl.innerHTML = '';
   if (!rootTree || !rootTree.children || rootTree.children.length === 0) {
@@ -1102,11 +1257,7 @@ function renderTree() {
           `<span class="chevron">${isCollapsed ? '▶' : '▼'}</span>` +
           `<span class="icon">📁</span>` +
           `<span class="title">${esc(node.name)}</span>` +
-          `<div class="row-actions">` +
-          `  <button class="row-btn" title="New file here" data-action="newfile">📄</button>` +
-          `  <button class="row-btn" title="Rename" data-action="rename">✏️</button>` +
-          `  <button class="row-btn" title="Delete" data-action="delete">🗑️</button>` +
-          `</div>`;
+          `<button class="row-more-btn" title="Actions" aria-label="Directory actions" data-action="more">⋯</button>`;
         wrap.appendChild(row);
 
         const sub = document.createElement('div');
@@ -1136,14 +1287,13 @@ function renderTree() {
       if (ext === 'canvas') icon = '◫';
       else if (IMG_EXTS.includes(ext)) icon = '🖼️';
 
+      const showMoreBtn = allowRenameTrash && !isPathGuarded(node.path) && isValidNoteExtension(node.path);
+
       row.innerHTML =
         `  <span class="chevron" style="opacity:0">•</span>` +
         `  <span class="icon">${icon}</span>` +
         `  <span class="title">${esc(node.name)}</span>` +
-        `  <div class="row-actions">` +
-        `    <button class="row-btn" title="Rename (Ctrl+M)" data-action="rename">✏️</button>` +
-        `    <button class="row-btn" title="Delete" data-action="delete">🗑️</button>` +
-        `  </div>`;
+        (showMoreBtn ? `  <button class="row-more-btn" title="Actions" aria-label="File actions" data-action="more">⋯</button>` : '');
       return row;
     }
   }
@@ -1930,6 +2080,17 @@ function openSettingsModal() {
   const chk = $('#chk-autosave');
   if (chk) chk.checked = autosaveEnabled;
 
+  const chkRenameTrash = $('#chk-allow-rename-trash');
+  if (chkRenameTrash) {
+    chkRenameTrash.checked = allowRenameTrash;
+    chkRenameTrash.onchange = e => {
+      allowRenameTrash = e.target.checked;
+      appSettings.allowRenameTrash = allowRenameTrash;
+      saveSettings(appSettings);
+      renderTree();
+    };
+  }
+
   const folderPath = $('#settings-folder-path');
   const vaultTitle = $('#vault-title');
   if (folderPath && vaultTitle) {
@@ -2027,6 +2188,14 @@ if (btnSidebarNewNote) {
    KEYBOARD DISPATCHER
    ========================================================================== */
 window.addEventListener('keydown', async e => {
+  const modalEl = $('#modal');
+  const shortcutsModalEl = $('#shortcuts-modal');
+  const settingsModalEl = $('#settings-modal');
+  const isAnyModalOpen = (modalEl && !modalEl.hidden) ||
+                         (shortcutsModalEl && !shortcutsModalEl.hidden) ||
+                         (settingsModalEl && !settingsModalEl.hidden);
+  if (isAnyModalOpen) return;
+
   const isInput = ['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeElement.tagName) ||
                   document.activeElement.isContentEditable;
 
@@ -2034,6 +2203,30 @@ window.addEventListener('keydown', async e => {
   if (isInput && (e.ctrlKey || e.metaKey)) {
     const k = e.key.toLowerCase();
     if (['z', 'y', 'c', 'v', 'x', 'a'].includes(k)) return;
+  }
+
+  // Canvas Delete / Backspace shortcut:
+  // selected card or edge is deleted only when canvas board view is active,
+  // focus is not in textarea, input or contenteditable, and no modal is open.
+  if ((e.key === 'Delete' || e.key === 'Backspace') && !isInput && !isAnyModalOpen) {
+    if (curFile && curFile.type === 'cv' && B.dataset.canvasView === 'board') {
+      if (sel) {
+        D.nodes = D.nodes.filter(n => n.id !== sel);
+        D.edges = D.edges.filter(x => x.fromNode !== sel && x.toNode !== sel);
+        sel = null;
+        commitCanvas();
+        draw();
+        e.preventDefault();
+        return;
+      } else if (selE) {
+        D.edges = D.edges.filter(x => x.id !== selE);
+        selE = null;
+        commitCanvas();
+        draw();
+        e.preventDefault();
+        return;
+      }
+    }
   }
 
   const combo = normalizeKeyCombo(e);
@@ -2046,35 +2239,17 @@ window.addEventListener('keydown', async e => {
   }
 
   const action = findActionForKey(combo);
-  if (!action) {
-    // Delete key on Canvas board
-    if (curFile && curFile.type === 'cv' && B.dataset.canvasView === 'board' && !isInput) {
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (sel) {
-          D.nodes = D.nodes.filter(n => n.id !== sel);
-          D.edges = D.edges.filter(x => x.fromNode !== sel && x.toNode !== sel);
-          sel = null;
-          commitCanvas();
-          draw();
-        } else if (selE) {
-          D.edges = D.edges.filter(x => x.id !== selE);
-          selE = null;
-          commitCanvas();
-          draw();
-        }
-      }
-    }
-    return;
-  }
+  if (!action) return;
 
   // Action matches bound shortcut: prevent browser default and dispatch
   e.preventDefault();
 
   switch (action) {
-    case 'file:save':
-      await saveActiveFile();
-      toast('File saved');
+    case 'file:save': {
+      const res = await saveActiveFile();
+      if (res && res.ok) toast('File saved');
       break;
+    }
     case 'file:new-note':
       await promptCreateFile('md');
       break;
@@ -2082,11 +2257,14 @@ window.addEventListener('keydown', async e => {
       await promptCreateFile('canvas');
       break;
     case 'file-explorer:move-file':
-      if (curPath) await promptRename(curPath);
+      if (allowRenameTrash && curPath) await promptRename(curPath);
       break;
-    case 'app:delete-file':
-      if (curPath) await promptDelete(curPath);
+    case 'app:delete-file': {
+      const inCanvasCard = !!(document.activeElement && document.activeElement.closest('.node'));
+      if (isInput || inCanvasCard) break;
+      if (allowRenameTrash && curPath) await promptDelete(curPath);
       break;
+    }
     case 'workspace:next-tab':
       if (openTabs.length > 1) {
         const curIdx = openTabs.findIndex(t => t.path === curPath);
@@ -2131,25 +2309,8 @@ window.addEventListener('keydown', async e => {
     case 'editor:toggle-highlight':
       toggleHighlight();
       break;
-    case 'editor:insert-footnote':
-      if (document.activeElement === ed) {
-        const s = ed.selectionStart;
-        ed.value = ed.value.slice(0, s) + '[^1]' + ed.value.slice(s);
-        ed.setSelectionRange(s + 4, s + 4);
-        ed.dispatchEvent(new Event('input'));
-      }
-      break;
     case 'app:open-shortcuts':
       openShortcutsDialog();
-      break;
-    case 'slides:start':
-      toast('Slides mode started');
-      break;
-    case 'obsidian-mind-map:app:markmap-preview':
-      toast('Markmap preview triggered');
-      break;
-    case 'pexels-banner:open-pixel-banner-select':
-      toast('Banner selection opened');
       break;
   }
 });
@@ -2157,7 +2318,7 @@ window.addEventListener('keydown', async e => {
 /* ==========================================================================
    IN-APP FILE OPERATIONS & DIALOGS (RULE 6)
    ========================================================================== */
-function showModal({ title, desc, defaultValue = null, validateExtra = null, buttons = null, actions = null }) {
+function showModal({ title, desc, defaultValue = null, validateExtra = null, buttons = null, actions = null, defaultFocus = null }) {
   return new Promise(resolve => {
     const modal = $('#modal');
     $('#modal-title').textContent = title || 'Notice';
@@ -2207,29 +2368,49 @@ function showModal({ title, desc, defaultValue = null, validateExtra = null, but
       { label: 'OK', value: true, primary: true }
     ];
 
+    let buttonToFocus = null;
     btnList.forEach(btn => {
       const b = document.createElement('button');
       b.textContent = btn.label;
       if (btn.primary) b.className = 'btn-primary';
+      if (btn.danger) b.classList.add('btn-danger');
       b.onclick = () => {
         if (btn.value !== false && !input.hidden && !validate()) return;
         cleanup();
         resolve(input.hidden ? btn.value : (btn.value === false ? false : input.value.trim()));
       };
+      if (btn.focus || (defaultFocus && btn.label === defaultFocus)) {
+        buttonToFocus = b;
+      }
       actionsContainer.appendChild(b);
     });
 
     const onKey = e => {
-      if (e.key === 'Escape') { cleanup(); resolve(false); }
-      else if (e.key === 'Enter') {
-        const prim = actionsContainer.querySelector('.btn-primary') || actionsContainer.querySelector('button');
-        if (prim) prim.click();
+      if (e.key === 'Escape') {
+        cleanup();
+        resolve(false);
+      } else if (e.key === 'Enter') {
+        if (document.activeElement && document.activeElement.tagName === 'BUTTON' && actionsContainer.contains(document.activeElement)) {
+          document.activeElement.click();
+          return;
+        }
+        if (document.activeElement === input) {
+          const prim = actionsContainer.querySelector('.btn-primary');
+          if (prim && !prim.classList.contains('btn-danger')) {
+            prim.click();
+          }
+        }
       }
     };
     window.addEventListener('keydown', onKey);
 
     modal.hidden = false;
-    if (!input.hidden) { input.focus(); input.select(); }
+    if (!input.hidden) {
+      input.focus();
+      input.select();
+    } else if (buttonToFocus) {
+      buttonToFocus.focus();
+    }
   });
 }
 
@@ -2237,7 +2418,7 @@ async function promptCreateFile(type = 'md', targetDir = '') {
   if (!rootTree || !rootTree.children) {
     const choose = await showModal({
       title: 'Select Workspace Folder',
-      desc: 'Please select a local folder to store your files before creating new notes.',
+      desc: 'Please select a local folder before creating files.',
       buttons: [
         { label: 'Cancel', value: false },
         { label: 'Select Folder', value: true, primary: true }
@@ -2251,14 +2432,24 @@ async function promptCreateFile(type = 'md', targetDir = '') {
 
   const isCanvas = (type === 'canvas');
   const ext = isCanvas ? '.canvas' : '.md';
+  const defaultBase = isCanvas ? 'Board' : 'Note';
 
   const name = await showModal({
     title: isCanvas ? 'New Canvas Board' : 'New Markdown Note',
-    desc: 'Enter file name (without path):',
-    defaultValue: isCanvas ? 'Board' : 'Note',
-    validateExtra: (rawName) => {
-      const fullPath = targetDir ? `${targetDir}/${rawName}${rawName.endsWith(ext) ? '' : ext}` : `${rawName}${rawName.endsWith(ext) ? '' : ext}`;
-      if (fileMap.has(fullPath)) return 'A file with this name already exists in this folder';
+    desc: `Target directory: ${targetDir || 'Vault Root'}`,
+    defaultValue: defaultBase,
+    validateExtra: (v) => {
+      const trimmed = v.trim();
+      if (!trimmed) return 'Name cannot be empty';
+      if (trimmed.length > 255) return 'Name exceeds 255 characters';
+      if (/^[. ]|[. ]$/.test(trimmed)) return 'Name cannot start or end with a dot or space';
+      if (/[<>:"/\\|?*]/.test(trimmed)) return 'Name cannot contain < > : " / \\ | ? *';
+      if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(trimmed)) return 'Reserved Windows device name not allowed';
+
+      const hasExt = trimmed.toLowerCase().endsWith(ext.toLowerCase());
+      const fileName = hasExt ? trimmed : `${trimmed}${ext}`;
+      const fullPath = targetDir ? `${targetDir}/${fileName}` : fileName;
+      if (fileMap.has(fullPath)) return `A file already exists at ${fullPath}`;
       return null;
     },
     buttons: [
@@ -2268,12 +2459,13 @@ async function promptCreateFile(type = 'md', targetDir = '') {
   });
   if (!name) return;
 
-  const fileName = name.endsWith(ext) ? name : `${name}${ext}`;
+  const hasExt = name.toLowerCase().endsWith(ext.toLowerCase());
+  const fileName = hasExt ? name : `${name}${ext}`;
   const filePath = targetDir ? `${targetDir}/${fileName}` : fileName;
 
   try {
     await storage.createFile(filePath);
-    const initialContent = isCanvas ? '{"nodes":[],"edges":[]}' : '# ' + name.replace(/\.(md|canvas)$/, '') + '\n\n';
+    const initialContent = isCanvas ? '{"nodes":[],"edges":[]}' : '# ' + name.replace(/\.(md|canvas)$/i, '') + '\n\n';
     const newMtime = await storage.writeText(filePath, initialContent, null, true);
     await reloadTree();
     const entry = fileMap.get(filePath);
@@ -2304,8 +2496,17 @@ async function promptCreateFolder(parentDir = '') {
 
   const folderName = await showModal({
     title: 'New Folder',
-    desc: 'Enter directory name:',
+    desc: `Parent directory: ${parentDir || 'Vault Root'}`,
     defaultValue: 'Folder',
+    validateExtra: (v) => {
+      const trimmed = v.trim();
+      if (!trimmed) return 'Folder name cannot be empty';
+      if (trimmed.length > 255) return 'Folder name exceeds 255 characters';
+      if (/^[. ]|[. ]$/.test(trimmed)) return 'Folder name cannot start or end with a dot or space';
+      if (/[<>:"/\\|?*]/.test(trimmed)) return 'Folder name cannot contain < > : " / \\ | ? *';
+      if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(trimmed)) return 'Reserved Windows device name not allowed';
+      return null;
+    },
     buttons: [
       { label: 'Cancel', value: false },
       { label: 'Create', value: true, primary: true }
@@ -2324,26 +2525,102 @@ async function promptCreateFolder(parentDir = '') {
 }
 
 async function promptRename(path) {
+  if (!allowRenameTrash) {
+    toast('Rename and trash operations are disabled in Settings');
+    return;
+  }
+  if (isPathGuarded(path) || !isValidNoteExtension(path)) {
+    toast('Protected or invalid file cannot be renamed');
+    return;
+  }
+
   const oldName = path.split('/').pop();
   const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
-  const isDir = !path.includes('.') || !fileMap.has(path);
+  const oldExt = oldName.split('.').pop().toLowerCase();
 
   const newName = await showModal({
-    title: isDir ? 'Rename Folder' : 'Rename File',
-    desc: `Rename "${oldName}" to:`,
+    title: 'Rename Note',
+    desc: `Old name: ${oldName}\nWarning: [[links]] to this note will not be updated automatically.`,
     defaultValue: oldName,
+    validateExtra: (v) => {
+      const trimmed = v.trim();
+      if (!trimmed) return 'Name cannot be empty';
+      if (trimmed.length > 255) return 'Name exceeds 255 characters';
+      if (/^[. ]|[. ]$/.test(trimmed)) return 'Name cannot start or end with a dot or space';
+      if (/[<>:"/\\|?*]/.test(trimmed)) return 'Name cannot contain < > : " / \\ | ? *';
+      if (/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(trimmed)) return 'Reserved Windows device name not allowed';
+
+      const newExt = trimmed.includes('.') ? trimmed.split('.').pop().toLowerCase() : '';
+      if (newExt !== oldExt) return `Extension change refused: file extension must remain .${oldExt}`;
+
+      const targetPath = dir ? `${dir}/${trimmed}` : trimmed;
+      if (targetPath !== path && fileMap.has(targetPath)) return 'A file with this name already exists in this folder';
+      return null;
+    },
     buttons: [
       { label: 'Cancel', value: false },
       { label: 'Rename', value: true, primary: true }
     ]
   });
-  if (!newName || newName === oldName) return;
 
+  if (!newName || newName === oldName) return;
   const newPath = dir ? `${dir}/${newName}` : newName;
+
+  // Await in-flight save for old path
+  if (inFlightSaves.has(path)) {
+    const res = await inFlightSaves.get(path);
+    if (res && !res.ok) {
+      toast('Cannot rename: saving changes failed');
+      return;
+    }
+  }
+
+  // If the file is dirty, await saveFile first
+  if (curFile && curFile.path === path && curFile.dirty) {
+    const res = await saveFile(curFile);
+    if (!res.ok) {
+      toast('Cannot rename: saving changes failed');
+      return;
+    }
+  }
+
+  // Cancel pending autosave for the old path
+  if (autosavePendingFile && autosavePendingFile.path === path) {
+    if (autosaveTimer) {
+      clearTimeout(autosaveTimer);
+      autosaveTimer = null;
+    }
+    autosavePendingFile = null;
+  }
+
   try {
     await storage.rename(path, newPath);
+
+    const entry = fileMap.get(path);
+    if (entry) {
+      fileMap.delete(path);
+      entry.path = newPath;
+      entry.name = newName;
+      fileMap.set(newPath, entry);
+    }
+
+    const tab = openTabs.find(t => t.path === path);
+    if (tab) {
+      tab.path = newPath;
+      tab.name = newName;
+      renderTabs();
+    }
+
+    if (curPath === path) {
+      curPath = newPath;
+      if (curFile) {
+        curFile.path = newPath;
+        curFile.name = newName;
+      }
+      updateNoteHeader();
+    }
+
     await reloadTree();
-    if (curPath === path) await openFile(newPath);
     toast(`Renamed to ${newName}`);
   } catch (err) {
     toast('Rename failed: ' + err);
@@ -2351,26 +2628,96 @@ async function promptRename(path) {
 }
 
 async function promptDelete(path) {
-  const fileName = path.split('/').pop();
-  const ok = await showModal({
+  if (!allowRenameTrash) {
+    toast('Rename and trash operations are disabled in Settings');
+    return;
+  }
+  if (isPathGuarded(path) || !isValidNoteExtension(path)) {
+    toast('Protected or invalid file cannot be moved to trash');
+    return;
+  }
+
+  const isOpen = openTabs.some(t => t.path === path);
+  const isCurrent = curFile && curFile.path === path;
+  const isDirty = isCurrent ? !!curFile.dirty : (openTabs.find(t => t.path === path)?.dirty || false);
+
+  let desc = `Full path: ${path}\n\nMoves to .driftnote-trash inside your vault. Nothing is permanently deleted.`;
+  if (isOpen) desc += '\n\nNote: This file is currently open in a tab.';
+  if (isDirty) desc += '\nWarning: This file has unsaved edits that will be lost.';
+
+  const confirmed = await showModal({
     title: 'Move to Trash',
-    desc: `Are you sure you want to move "${fileName}" to trash?`,
+    desc,
     defaultValue: null,
+    defaultFocus: 'Cancel',
     buttons: [
-      { label: 'Cancel', value: false },
-      { label: 'Delete', value: true, primary: true }
+      { label: 'Cancel', value: false, focus: true },
+      { label: 'Move to trash', value: true, primary: true, danger: true }
     ]
   });
-  if (!ok) return;
+  if (!confirmed) return;
+
+  // Await in-flight save for path
+  if (inFlightSaves.has(path)) {
+    const res = await inFlightSaves.get(path);
+    if (res && !res.ok) {
+      toast('Cannot move to trash: pending save failed');
+      return;
+    }
+  }
+
+  // Cancel any pending autosave timer for that path
+  if (autosavePendingFile && autosavePendingFile.path === path) {
+    if (autosaveTimer) {
+      clearTimeout(autosaveTimer);
+      autosaveTimer = null;
+    }
+    autosavePendingFile = null;
+  }
+
+  const wasDirty = isDirty;
+  if (isCurrent) {
+    curFile.dirty = false;
+  }
+  const openT = openTabs.find(t => t.path === path);
+  if (openT) openT.dirty = false;
 
   try {
-    await storage.trash(path);
-    if (curPath === path) {
-      await closeTab(path);
+    const trashName = await storage.trash(path);
+
+    // After a successful trash: ensure no queued save can write the old path
+    if (autosavePendingFile && autosavePendingFile.path === path) {
+      if (autosaveTimer) {
+        clearTimeout(autosaveTimer);
+        autosaveTimer = null;
+      }
+      autosavePendingFile = null;
+    }
+
+    if (isOpen) {
+      await closeTab(path, true);
     }
     await reloadTree();
-    toast(`Moved ${fileName} to trash`);
+
+    toastWithAction('Moved to trash', 'Undo', async () => {
+      try {
+        await storage.restoreFromTrash(trashName, path);
+        await reloadTree();
+        await openFile(path);
+        toast(`Restored ${path.split('/').pop()}`);
+      } catch (err) {
+        toast(`Restore failed: ${err}`);
+      }
+    }, 8000);
   } catch (err) {
+    if (wasDirty) {
+      if (isCurrent) {
+        curFile.dirty = true;
+        queueSave();
+      } else if (openT) {
+        openT.dirty = true;
+      }
+    }
     toast('Delete failed: ' + err);
   }
 }
@@ -2404,23 +2751,13 @@ $('#btn-collapse-all').onclick = () => {
 };
 
 treeEl.onclick = async e => {
-  const actionBtn = e.target.closest('[data-action]');
-  if (actionBtn) {
+  const moreBtn = e.target.closest('[data-action="more"]');
+  if (moreBtn) {
     e.stopPropagation();
-    const action = actionBtn.dataset.action;
-    const fileRow = actionBtn.closest('.file-row');
-    const dirRow = actionBtn.closest('.dir-row');
-
-    if (action === 'delete') {
-      const p = (fileRow ? fileRow.dataset.p : dirRow && dirRow.dataset.d);
-      if (p) await promptDelete(p);
-    } else if (action === 'rename') {
-      const p = fileRow && fileRow.dataset.p;
-      if (p) await promptRename(p);
-    } else if (action === 'newfile') {
-      const d = dirRow && dirRow.dataset.d;
-      if (d) await promptCreateFile('md', d);
-    }
+    const fileRow = moreBtn.closest('.file-row');
+    const dirRow = moreBtn.closest('.dir-row');
+    const p = fileRow ? fileRow.dataset.p : (dirRow ? dirRow.dataset.d : '');
+    openRowMenu(moreBtn, p, !!dirRow);
     return;
   }
 
@@ -2594,11 +2931,36 @@ async function setupWatcher() {
   });
 }
 
+let toastTimer = null;
+
 function toast(msg) {
+  if (toastTimer) clearTimeout(toastTimer);
   const t = $('#toast');
   t.textContent = msg;
   t.hidden = false;
-  setTimeout(() => { t.hidden = true; }, 2400);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 2400);
+}
+
+function toastWithAction(msg, actionText, actionFn, duration = 8000) {
+  if (toastTimer) clearTimeout(toastTimer);
+  const t = $('#toast');
+  t.innerHTML = '';
+  const textSpan = document.createElement('span');
+  textSpan.textContent = msg;
+  t.appendChild(textSpan);
+
+  const btn = document.createElement('button');
+  btn.className = 'toast-action-btn';
+  btn.textContent = actionText;
+  btn.onclick = async () => {
+    if (toastTimer) clearTimeout(toastTimer);
+    t.hidden = true;
+    await actionFn();
+  };
+  t.appendChild(btn);
+
+  t.hidden = false;
+  toastTimer = setTimeout(() => { t.hidden = true; }, duration);
 }
 
 /* ==========================================================================
