@@ -2184,17 +2184,19 @@ if (btnSidebarNewNote) {
 }
 
 
+function isAnyModalOpen() {
+  const modalIds = ['#modal', '#settings-modal', '#shortcuts-modal', '#palette-modal'];
+  return modalIds.some(sel => {
+    const el = $(sel);
+    return el && !el.hidden;
+  });
+}
+
 /* ==========================================================================
    KEYBOARD DISPATCHER
    ========================================================================== */
 window.addEventListener('keydown', async e => {
-  const modalEl = $('#modal');
-  const shortcutsModalEl = $('#shortcuts-modal');
-  const settingsModalEl = $('#settings-modal');
-  const isAnyModalOpen = (modalEl && !modalEl.hidden) ||
-                         (shortcutsModalEl && !shortcutsModalEl.hidden) ||
-                         (settingsModalEl && !settingsModalEl.hidden);
-  if (isAnyModalOpen) return;
+  if (isAnyModalOpen()) return;
 
   const isInput = ['TEXTAREA', 'INPUT', 'SELECT'].includes(document.activeElement.tagName) ||
                   document.activeElement.isContentEditable;
@@ -2208,7 +2210,7 @@ window.addEventListener('keydown', async e => {
   // Canvas Delete / Backspace shortcut:
   // selected card or edge is deleted only when canvas board view is active,
   // focus is not in textarea, input or contenteditable, and no modal is open.
-  if ((e.key === 'Delete' || e.key === 'Backspace') && !isInput && !isAnyModalOpen) {
+  if ((e.key === 'Delete' || e.key === 'Backspace') && !isInput && !isAnyModalOpen()) {
     if (curFile && curFile.type === 'cv' && B.dataset.canvasView === 'board') {
       if (sel) {
         D.nodes = D.nodes.filter(n => n.id !== sel);
