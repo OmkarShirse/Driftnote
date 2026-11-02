@@ -804,9 +804,12 @@ async function saveFile(fileToSave, force = false) {
 
   if (inFlightSaves.has(fileToSave.path)) {
     savePendingRerun.add(fileToSave.path);
-    await inFlightSaves.get(fileToSave.path);
+    const inFlightResult = await inFlightSaves.get(fileToSave.path);
+    if (!inFlightResult || !inFlightResult.ok) {
+      return inFlightResult || { ok: false, error: 'In-flight save failed' };
+    }
     if (!fileToSave.dirty) {
-      return { ok: true, mtime: fileToSave.mtime };
+      return inFlightResult;
     }
     return await saveFile(fileToSave, force);
   }
@@ -845,25 +848,29 @@ async function saveFile(fileToSave, force = false) {
 
     const result = { ok: true, mtime: newMtime };
     resolveSavePromise(result);
+    inFlightSaves.delete(fileToSave.path);
+
+    if (savePendingRerun.has(fileToSave.path) && fileToSave.dirty) {
+      savePendingRerun.delete(fileToSave.path);
+      saveFile(fileToSave, force);
+    }
     return result;
   } catch (err) {
     const errMsg = String(err);
-    if (errMsg.includes('Conflict')) {
+    const isConflict = errMsg.includes('Conflict');
+    if (isConflict) {
       setSaveBadge('conflict');
-      await showConflictDialog(fileToSave.path);
     } else {
       setSaveBadge('error');
       toast('Save failed: ' + errMsg);
     }
     const result = { ok: false, error: errMsg };
     resolveSavePromise(result);
-    return result;
-  } finally {
     inFlightSaves.delete(fileToSave.path);
-    if (savePendingRerun.has(fileToSave.path) && fileToSave.dirty) {
-      savePendingRerun.delete(fileToSave.path);
-      saveFile(fileToSave, force);
+    if (isConflict) {
+      await showConflictDialog(fileToSave.path);
     }
+    return result;
   }
 }
 
