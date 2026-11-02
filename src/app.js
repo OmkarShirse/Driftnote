@@ -771,15 +771,17 @@ $('#btn-view-mode').onclick = () => {
 const inFlightSaves = new Map();
 const savePendingRerun = new Set();
 
-function queueSave() {
-  if (!curFile || !autosaveEnabled || canvasBroken) return;
-  curFile.dirty = true;
-  setSaveBadge('unsaved');
-  const openT = openTabs.find(t => t.path === curFile.path);
+function queueSave(file = curFile) {
+  if (!file || !autosaveEnabled || canvasBroken) return;
+  file.dirty = true;
+  if (!curFile || curFile.path === file.path) {
+    setSaveBadge('unsaved');
+  }
+  const openT = openTabs.find(t => t.path === file.path);
   if (openT) openT.dirty = true;
   renderTabs();
 
-  autosavePendingFile = curFile;
+  autosavePendingFile = file;
   if (autosaveTimer) clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(async () => {
     if (autosavePendingFile && autosavePendingFile.dirty) {
@@ -838,7 +840,7 @@ async function saveFile(fileToSave, force = false) {
       }
     } else {
       fileToSave.dirty = true;
-      queueSave();
+      queueSave(fileToSave);
     }
 
     const result = { ok: true, mtime: newMtime };
