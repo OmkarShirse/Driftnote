@@ -2399,11 +2399,6 @@ kbd,
   color: var(--ink);
 }
 
-.tree-row.active {
-  background: color-mix(in srgb, var(--acc) 12%, var(--panel));
-  color: var(--acc);
-  font-weight: 500;
-}
 
 /* 5. Surfaces (6-8px radius, 1px --line border, soft shadows) */
 .modal-card,
@@ -2446,10 +2441,6 @@ kbd,
   border-radius: 6px;
 }
 
-.node::before {
-  border-radius: 6px;
-  border: 1px solid var(--line);
-}
 
 .node.group {
   padding: 12px;
@@ -2462,18 +2453,7 @@ kbd,
   letter-spacing: -0.01em;
 }
 
-.node.sel::before {
-  border-color: var(--acc) !important;
-  box-shadow: 0 0 0 2px var(--acc);
-}
 
-.card-toolbar,
-#tb {
-  height: 30px;
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-}
 
 .canvas-minimap {
   border-radius: 6px;
@@ -2528,8 +2508,7 @@ textarea:focus-visible,
   }
 }
 
-
-
-
-
-
+/* VISUAL TUNING v1.1 (delete this block to undo the fixes) */
+.card-toolbar { height: auto; min-height: 30px; display: flex; flex-wrap: wrap; align-items: center; }
+.tree-row.active { background: color-mix(in srgb, var(--acc) 14%, var(--panel)); color: var(--ink); font-weight: 600; box-shadow: inset 2px 0 0 var(--acc); }
+.tree-row.active .icon, .tree-row.active .chevron { color: var(--acc); }
