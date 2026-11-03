@@ -14,3 +14,4 @@ stack.txt
 run.log
 stack.txt
 *.bak
+src/*.pre-v11
