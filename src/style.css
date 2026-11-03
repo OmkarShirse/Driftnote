@@ -2158,3 +2158,8 @@ body[data-canvas-view="json"] #js { display: block; }
   color: var(--bad);
   border-color: var(--bad) !important;
 }
+
+/* PALETTE OVERRIDE: user's original cozy journal palette. Delete this block to revert. */
+:root{--bg:#ffffff;--panel:#f8f9fa;--panel-alt:#f0f2f5;--card-bg:#ffffff;--ink:#202122;--mute:#54595d;--faint:#72777d;--line:#dcdfe3;--line-strong:#a2a9b1;--hover:#f0f2f5;--acc:#3366cc;--acchov:#0645ad;--accbg:#eaf3ff;--grid:#e0e0e0;--ok:#2e7d32;--warn:#b26a00;--bad:#ba0000;--code-bg:#f8f9fa}
+:root[data-theme="dark"]{--bg:#000000;--panel:#0a0b0d;--panel-alt:#121417;--card-bg:#0e1013;--ink:#eaecf0;--mute:#9aa0a7;--faint:#72777d;--line:#22262c;--line-strong:#2c3036;--hover:#16181c;--acc:#81a8f8;--acchov:#a7c4fb;--accbg:#1c2430;--grid:#1a1a1a;--ok:#4caf50;--warn:#ffa726;--bad:#ff6e6e;--code-bg:#101215}
+
