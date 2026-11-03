@@ -2227,4 +2227,65 @@ body[data-canvas-view="json"] #js { display: block; }
   gap: var(--space-2);
 }
 
+/* 2. Type Scale (12px, 13px, 16px, 30px) */
+body,
+button,
+input,
+select,
+textarea,
+.tab-pill,
+.tree-row,
+.palette-item,
+.sidebar-nav-item,
+.modal-card,
+.settings-card,
+.shortcuts-card,
+.btn-primary,
+.btn-danger,
+.menu-item {
+  font-size: 13px;
+}
+
+.pill-meta,
+.status-badge,
+.rail-tooltip,
+.settings-desc,
+.shortcut-desc,
+.tree-empty-text,
+.card-toolbar select,
+.card-toolbar input {
+  font-size: 12px;
+}
+
+#note-title,
+.welcome-title {
+  font-size: 30px;
+  line-height: 1.25;
+}
+
+#pv,
+.markdown-preview {
+  font-size: 16px;
+  line-height: 1.7;
+}
+#pv p,
+#pv li,
+#pv blockquote {
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+#ed,
+.editor-textarea,
+code,
+pre,
+kbd,
+#js,
+.shortcut-key,
+.palette-item-badge {
+  font-size: 13px;
+  font-family: var(--font-mono);
+}
+
+
 
