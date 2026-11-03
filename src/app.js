@@ -869,6 +869,9 @@ async function saveFile(fileToSave, force = false) {
     inFlightSaves.delete(fileToSave.path);
     if (isConflict) {
       await showConflictDialog(fileToSave.path);
+      if (!fileToSave.dirty) {
+        return { ok: true, mtime: fileToSave.mtime };
+      }
     }
     return result;
   }

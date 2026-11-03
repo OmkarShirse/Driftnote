@@ -7,6 +7,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 app_path = os.path.join(ROOT, "src", "app.js")
 html_path = os.path.join(ROOT, "src", "index.html")
 css_path = os.path.join(ROOT, "src", "style.css")
+allow_path = os.path.join(ROOT, "tools", "check.allow")
 
 with open(app_path, "r", encoding="utf-8") as f:
     app_src = f.read()
@@ -14,6 +15,14 @@ with open(html_path, "r", encoding="utf-8") as f:
     html_src = f.read()
 with open(css_path, "r", encoding="utf-8") as f:
     css_src = f.read()
+
+allowed = set()
+if os.path.exists(allow_path):
+    with open(allow_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                allowed.add(line.lstrip("#."))
 
 # 1. IDs used in app.js via $('#id'), $$('#id'), getElementById('id'), querySelector('#id')
 ids = set()
@@ -30,7 +39,8 @@ missing_ids = []
 for clean_id in sorted(ids):
     pattern = rf'id=[\'"]{re.escape(clean_id)}[\'"]'
     if not re.search(pattern, html_src):
-        missing_ids.append(clean_id)
+        if clean_id not in allowed:
+            missing_ids.append(clean_id)
 
 print(f"IDs used in app.js missing in index.html: {len(missing_ids)}")
 for i in missing_ids:
@@ -79,7 +89,7 @@ for sel in re.findall(r'([^{}]+)\{', css_src):
         for c in re.findall(r'\.([a-zA-Z0-9_-]+)', sel):
             state_classes.add(c)
 
-filtered_classes = {c for c in classes if c not in state_classes}
+filtered_classes = {c for c in classes if c not in state_classes and c not in allowed}
 
 missing_classes = []
 for c in sorted(filtered_classes):

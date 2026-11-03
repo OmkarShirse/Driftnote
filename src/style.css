@@ -1747,7 +1747,7 @@ body[data-canvas-view="json"] #js { display: block; }
   cursor: pointer;
 }
 
-.palette-item:hover, .palette-item.active {
+.palette-item:hover, .palette-item.active, .palette-item.selected {
   background: var(--hover);
   color: var(--ink);
 }
