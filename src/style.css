@@ -2405,6 +2405,84 @@ kbd,
   font-weight: 500;
 }
 
+/* 5. Surfaces (6-8px radius, 1px --line border, soft shadows) */
+.modal-card,
+.settings-card,
+.shortcuts-card,
+.palette-card,
+.row-popover-menu,
+.rail-tooltip,
+.outline-dropdown {
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-surface);
+  background: var(--card-bg);
+}
+
+.card-toolbar,
+#tb {
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-toolbar);
+  background: var(--card-bg);
+}
+
+.btn-primary,
+.btn-danger,
+.pill-btn,
+.btn-save,
+.rail-btn,
+.tab-drawer-toggle,
+.welcome-btn,
+.theme-choice-btn,
+.btn-notion-sm {
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+
+/* 6. Canvas (card padding 12px, group label readable, selected card ring using --acc, toolbar compact, minimap bordered) */
+.node {
+  padding: 12px;
+  border-radius: 6px;
+}
+
+.node::before {
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+
+.node.group {
+  padding: 12px;
+}
+
+.node.group .body {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.node.sel::before {
+  border-color: var(--acc) !important;
+  box-shadow: 0 0 0 2px var(--acc);
+}
+
+.card-toolbar,
+#tb {
+  height: 30px;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+}
+
+.canvas-minimap {
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow-toolbar);
+}
+
+
 
 
 
