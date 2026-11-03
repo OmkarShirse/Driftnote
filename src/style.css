@@ -2163,3 +2163,68 @@ body[data-canvas-view="json"] #js { display: block; }
 :root{--bg:#ffffff;--panel:#f8f9fa;--panel-alt:#f0f2f5;--card-bg:#ffffff;--ink:#202122;--mute:#54595d;--faint:#72777d;--line:#dcdfe3;--line-strong:#a2a9b1;--hover:#f0f2f5;--acc:#3366cc;--acchov:#0645ad;--accbg:#eaf3ff;--grid:#e0e0e0;--ok:#2e7d32;--warn:#b26a00;--bad:#ba0000;--code-bg:#f8f9fa}
 :root[data-theme="dark"]{--bg:#000000;--panel:#0a0b0d;--panel-alt:#121417;--card-bg:#0e1013;--ink:#eaecf0;--mute:#9aa0a7;--faint:#72777d;--line:#22262c;--line-strong:#2c3036;--hover:#16181c;--acc:#81a8f8;--acchov:#a7c4fb;--accbg:#1c2430;--grid:#1a1a1a;--ok:#4caf50;--warn:#ffa726;--bad:#ff6e6e;--code-bg:#101215}
 
+/* ==========================================================================
+   VISUAL TUNING v1
+   ========================================================================== */
+:root {
+  /* 1. Spacing System */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* 5. Surface Shadows */
+  --shadow-surface: 0 10px 30px -4px color-mix(in srgb, var(--ink) 12%, transparent);
+  --shadow-toolbar: 0 4px 14px -2px color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
+/* 1. Spacing Application */
+#rail {
+  padding: var(--space-3) var(--space-2);
+  gap: var(--space-2);
+}
+.rail-group {
+  gap: var(--space-2);
+}
+
+#drawer {
+  padding: var(--space-3) var(--space-2);
+  gap: var(--space-2);
+}
+.drawer-header {
+  padding: 0 var(--space-1) var(--space-2) var(--space-1);
+}
+
+#tabs-bar {
+  padding: 0 var(--space-3);
+  gap: var(--space-2);
+}
+
+.note-header {
+  padding: var(--space-6) var(--space-6) var(--space-4) var(--space-6);
+  gap: var(--space-3);
+}
+
+.modal-card,
+.settings-card,
+.shortcuts-card,
+.palette-card {
+  padding: var(--space-5);
+  gap: var(--space-4);
+}
+.settings-body {
+  gap: var(--space-4);
+}
+.settings-section {
+  gap: var(--space-3);
+}
+
+.card-toolbar,
+#tb {
+  padding: var(--space-1) var(--space-2);
+  gap: var(--space-2);
+}
+
+
