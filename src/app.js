@@ -36,7 +36,7 @@ const DEFAULT_KEYMAP = {
   'app:command-palette': 'Ctrl+K',
   'app:toggle-view-mode': 'Ctrl+E',
   'app:toggle-theme': 'Ctrl+Shift+T',
-  'app:toggle-left-sidebar': 'Shift+ArrowLeft',
+  'app:toggle-left-sidebar': 'Ctrl+B',
   'app:toggle-right-sidebar': 'Shift+ArrowRight',
   'app:switch-vault': 'F1',
   'app:reload': 'F5',
@@ -2746,7 +2746,7 @@ $('#rail-tags').onclick = () => openCommandPalette();
 $('#rail-shortcuts').onclick = () => openShortcutsDialog();
 $('#btn-pin-drawer').onclick = () => togglePinDrawer();
 $('#btn-close-drawer').onclick = () => toggleDrawer(false);
-$('#btn-open-drawer').onclick = () => toggleDrawer(true);
+$('#btn-open-drawer').onclick = () => toggleDrawer();
 $('#drawer-backdrop').onclick = () => toggleDrawer(false);
 
 $('#btn-new-note').onclick = () => promptCreateFile('md');
