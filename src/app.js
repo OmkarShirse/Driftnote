@@ -2191,10 +2191,6 @@ if (btnWorkspaceSwitch) {
   btnWorkspaceSwitch.onclick = () => $('#btn-open-dir').click();
 }
 
-const btnSidebarNewNote = $('#btn-sidebar-new-note');
-if (btnSidebarNewNote) {
-  btnSidebarNewNote.onclick = () => promptCreateFile('md');
-}
 
 
 function isAnyModalOpen() {

@@ -71,6 +71,9 @@
         <span id="vault-title" class="vault-title">Workspace</span>
       </div>
       <div class="drawer-header-actions">
+        <button id="btn-new-note" class="btn-icon-sm" title="New note (Ctrl+N)" aria-label="New note">📝</button>
+        <button id="btn-new-canvas" class="btn-icon-sm" title="New canvas (Ctrl+Shift+N)" aria-label="New canvas">◫</button>
+        <button id="btn-new-folder" class="btn-icon-sm" title="New folder" aria-label="New folder">📁</button>
         <button id="btn-pin-drawer" class="btn-icon-sm" title="Pin sidebar" aria-pressed="true">📌</button>
         <button id="btn-close-drawer" class="btn-icon-sm btn-drawer-close" title="Close sidebar" aria-label="Close sidebar">✕</button>
       </div>
@@ -98,9 +101,6 @@
     <div class="sidebar-section-header">
       <span class="sidebar-section-title">PAGES</span>
       <div class="sidebar-section-actions">
-        <button id="btn-new-note" class="btn-section-action" title="New Note (Ctrl+N)">+ Note</button>
-        <button id="btn-new-canvas" class="btn-section-action" title="New Canvas">+ Board</button>
-        <button id="btn-new-folder" class="btn-section-action" title="New Folder">+ Folder</button>
         <button id="btn-collapse-all" class="btn-section-action" title="Collapse all folders">Collapse</button>
       </div>
     </div>
@@ -112,12 +112,6 @@
     <div id="file-tree" role="tree" aria-label="File tree"></div>
 
     <!-- Sidebar Bottom Footer -->
-    <div class="sidebar-footer">
-      <button id="btn-sidebar-new-note" class="sidebar-bottom-btn">
-        <span class="btn-icon">+</span>
-        <span>New page</span>
-      </button>
-    </div>
   </aside>
 
   <!-- Workspace Area -->
