@@ -2512,3 +2512,7 @@ textarea:focus-visible,
 .card-toolbar { height: auto; min-height: 30px; display: flex; flex-wrap: wrap; align-items: center; }
 .tree-row.active { background: color-mix(in srgb, var(--acc) 14%, var(--panel)); color: var(--ink); font-weight: 600; box-shadow: inset 2px 0 0 var(--acc); }
 .tree-row.active .icon, .tree-row.active .chevron { color: var(--acc); }
+
+/* faint text contrast fix */
+:root{--faint:#6e7379}
+:root[data-theme="dark"]{--faint:#777c82}
