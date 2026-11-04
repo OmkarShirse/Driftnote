@@ -665,7 +665,6 @@ function updateStatusPill() {
     const text = (curFile && curFile.content) || ed.value || '';
     const words = text.trim() ? text.trim().split(/\s+/).filter(Boolean).length : 0;
     $('#pill-words').textContent = `${words} words`;
-    $('#chip-words').textContent = `📝 ${words} words`;
   }
 }
 
@@ -676,24 +675,9 @@ function updateCanvasStatusPill() {
 function updateNoteMetaChips() {
   if (!curFile) {
     $('#note-title').textContent = 'No file open';
-    $('#chip-mtime').textContent = '🕒 Just now';
-    $('#chip-tags').textContent = '🏷️ No tags';
     return;
   }
   $('#note-title').textContent = curFile.name.replace(/\.(md|canvas)$/, '');
-
-  if (curFile.mtime) {
-    const date = new Date(curFile.mtime);
-    const timeStr = isNaN(date.getTime()) ? 'Recently' : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    $('#chip-mtime').textContent = `🕒 ${timeStr}`;
-  } else {
-    $('#chip-mtime').textContent = '🕒 Just now';
-  }
-
-  const content = curFile.content || ed.value || '';
-  const tags = [...content.matchAll(/#([a-zA-Z0-9_\-]+)/g)].map(m => `#${m[1]}`);
-  const uniqueTags = [...new Set(tags)];
-  $('#chip-tags').textContent = uniqueTags.length ? uniqueTags.slice(0, 3).join(' ') : '🏷️ No tags';
 }
 
 /* ==========================================================================
@@ -2179,12 +2163,6 @@ if (navItemSearch) navItemSearch.onclick = openCommandPalette;
 const navItemBoards = $('#nav-item-boards');
 if (navItemBoards) navItemBoards.onclick = () => promptCreateFile('canvas');
 
-const navItemTags = $('#nav-item-tags');
-if (navItemTags) {
-  navItemTags.onclick = () => {
-    toast('Tags viewer');
-  };
-}
 
 const btnWorkspaceSwitch = $('#btn-sidebar-workspace-switch');
 if (btnWorkspaceSwitch) {
@@ -2739,7 +2717,6 @@ async function promptDelete(path) {
 $('#rail-files').onclick = () => toggleDrawer();
 $('#rail-search').onclick = () => openCommandPalette();
 $('#rail-boards').onclick = () => promptCreateFile('canvas');
-$('#rail-tags').onclick = () => openCommandPalette();
 $('#btn-pin-drawer').onclick = () => togglePinDrawer();
 $('#btn-close-drawer').onclick = () => toggleDrawer(false);
 $('#btn-open-drawer').onclick = () => toggleDrawer();
