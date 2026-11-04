@@ -2077,7 +2077,7 @@ $('#shortcuts-modal').onclick = e => {
 /* ==========================================================================
    SETTINGS MODAL & NOTION SIDEBAR INTERACTIONS
    ========================================================================== */
-function openSettingsModal() {
+function openSettingsModal(section) {
   const modal = $('#settings-modal');
   if (!modal) return;
   modal.hidden = false;
@@ -2107,6 +2107,11 @@ function openSettingsModal() {
   const vaultTitle = $('#vault-title');
   if (folderPath && vaultTitle) {
     folderPath.textContent = 'Current: ' + (vaultTitle.textContent || 'Not selected');
+  }
+
+  if (section === 'shortcuts') {
+    const sec = $('#settings-section-shortcuts');
+    if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
 
@@ -2164,7 +2169,7 @@ if (btnSettingsOpenFolder) {
 }
 
 const btnOpenSettingsRail = $('#btn-open-settings-rail');
-if (btnOpenSettingsRail) btnOpenSettingsRail.onclick = openSettingsModal;
+if (btnOpenSettingsRail) btnOpenSettingsRail.onclick = () => openSettingsModal();
 
 
 
@@ -2320,7 +2325,7 @@ window.addEventListener('keydown', async e => {
       toggleHighlight();
       break;
     case 'app:open-shortcuts':
-      openShortcutsDialog();
+      openSettingsModal('shortcuts');
       break;
   }
 });
@@ -2739,7 +2744,6 @@ $('#rail-files').onclick = () => toggleDrawer();
 $('#rail-search').onclick = () => openCommandPalette();
 $('#rail-boards').onclick = () => promptCreateFile('canvas');
 $('#rail-tags').onclick = () => openCommandPalette();
-$('#rail-shortcuts').onclick = () => openShortcutsDialog();
 $('#btn-pin-drawer').onclick = () => togglePinDrawer();
 $('#btn-close-drawer').onclick = () => toggleDrawer(false);
 $('#btn-open-drawer').onclick = () => toggleDrawer();
