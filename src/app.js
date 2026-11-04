@@ -57,7 +57,7 @@ const ACTION_DESCRIPTIONS = {
   'app:toggle-view-mode': 'Toggle Read / Edit mode',
   'app:toggle-theme': 'Toggle light / dark theme',
   'app:toggle-left-sidebar': 'Toggle left sidebar',
-  'app:toggle-right-sidebar': 'Toggle outline widget',
+  'app:toggle-right-sidebar': 'Toggle right sidebar',
   'app:switch-vault': 'Open vault / folder',
   'app:reload': 'Reload workspace tree',
   'editor:toggle-highlight': 'Toggle highlight (==text==)',
@@ -216,6 +216,28 @@ function togglePinDrawer() {
   localStorage.setItem('dn_drawer_pinned', String(drawerPinned));
   if (drawerPinned) drawerOpen = true;
   updateDrawerState();
+}
+
+/* Right Sidebar State (Outline & Info, open by default on > 900px screens) */
+let rightSidebarOpen = localStorage.getItem('dn_right_sidebar_open') !== null
+  ? localStorage.getItem('dn_right_sidebar_open') === 'true'
+  : (window.innerWidth > 900);
+
+function updateRightSidebarState() {
+  $('#shell').classList.toggle('right-sidebar-open', rightSidebarOpen);
+  const btn = $('#btn-toggle-right-sidebar');
+  if (btn) btn.setAttribute('aria-pressed', String(rightSidebarOpen));
+}
+window.addEventListener('resize', updateRightSidebarState);
+
+function toggleRightSidebar(forceState) {
+  rightSidebarOpen = (typeof forceState === 'boolean') ? forceState : !rightSidebarOpen;
+  localStorage.setItem('dn_right_sidebar_open', String(rightSidebarOpen));
+  updateRightSidebarState();
+  if (rightSidebarOpen) {
+    updateOutline();
+    updateLiveInfo();
+  }
 }
 
 /* Tabs State */
@@ -672,6 +694,48 @@ function updateCanvasStatusPill() {
   $('#pill-canvas-zoom').textContent = `${Math.round(V.z * 100)}%`;
 }
 
+function updateLiveInfo(text) {
+  if (!curFile) return;
+  if (curFile.type === 'md') {
+    const val = typeof text === 'string' ? text : ((curFile && curFile.content) || (ed && ed.value) || '');
+    const chars = val.length;
+    const words = val.trim() ? val.trim().split(/\s+/).filter(Boolean).length : 0;
+    const readingTime = Math.max(1, Math.ceil(words / 200)) + ' min read';
+
+    const wordsEl = $('#info-words');
+    if (wordsEl) wordsEl.textContent = `${words} words`;
+    const charsEl = $('#info-chars');
+    if (charsEl) charsEl.textContent = `${chars} chars`;
+    const readEl = $('#info-reading-time');
+    if (readEl) readEl.textContent = readingTime;
+    const mtimeEl = $('#info-mtime');
+    if (mtimeEl) {
+      if (curFile.mtime) {
+        const d = new Date(curFile.mtime);
+        mtimeEl.textContent = isNaN(d.getTime()) ? 'Recently' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } else {
+        mtimeEl.textContent = 'Just now';
+      }
+    }
+    const noteInfo = $('#info-details-note');
+    const cvInfo = $('#info-details-canvas');
+    if (noteInfo) noteInfo.style.display = 'flex';
+    if (cvInfo) cvInfo.style.display = 'none';
+  } else if (curFile.type === 'canvas') {
+    const noteInfo = $('#info-details-note');
+    const cvInfo = $('#info-details-canvas');
+    if (noteInfo) noteInfo.style.display = 'none';
+    if (cvInfo) cvInfo.style.display = 'flex';
+
+    const cardsEl = $('#info-canvas-cards');
+    if (cardsEl) cardsEl.textContent = String(D && D.nodes ? D.nodes.length : 0);
+    const linksEl = $('#info-canvas-links');
+    if (linksEl) linksEl.textContent = String(D && D.edges ? D.edges.length : 0);
+    const zoomEl = $('#info-canvas-zoom');
+    if (zoomEl) zoomEl.textContent = `${Math.round(V.z * 100)}%`;
+  }
+}
+
 function updateNoteMetaChips() {
   if (!curFile) {
     $('#note-title').textContent = 'No file open';
@@ -704,37 +768,56 @@ async function updatePreview() {
   if (curPath) {
     await resolvePreviewImages(pvEl, curPath);
   }
-  updateHoverOutline();
+  updateOutline();
   updateStatusPill();
   updateNoteMetaChips();
+  updateLiveInfo();
 }
 
-function updateHoverOutline() {
+function updateOutline() {
   const list = $('#outline-list');
+  if (!list) return;
   if (!curFile || curFile.type !== 'md') {
     list.innerHTML = '<span class="mute">No outline available</span>';
     return;
   }
-  const hs = [...(curFile.content || ed.value || '').matchAll(/^(#{1,6})\s+(.+)$/gm)];
+  const content = (curFile && curFile.content) || ed.value || '';
+  const hs = [...content.matchAll(/^(#{1,6})\s+(.+)$/gm)];
   if (!hs.length) {
     list.innerHTML = '<span class="mute" style="padding:4px">No headings found</span>';
     return;
   }
   list.innerHTML = hs.map((m, i) => {
     const pad = (m[1].length - 1) * 10;
-    return `<a href="#" data-h="${i}" style="padding-left:${pad + 6}px">${esc(m[2])}</a>`;
+    return `<a href="#" class="outline-item" data-h="${i}" data-index="${m.index}" style="padding-left:${pad + 6}px">${esc(m[2])}</a>`;
   }).join('');
 }
 
-$('#outline-list').onclick = e => {
-  const a = e.target.closest('[data-h]');
-  if (!a) return;
-  e.preventDefault();
-  setViewMode('read');
-  const headings = pvEl.querySelectorAll('h1,h2,h3,h4,h5,h6');
-  const targetH = headings[a.dataset.h];
-  if (targetH) targetH.scrollIntoView({ behavior: 'smooth', block: 'start' });
-};
+const outlineListContainer = $('#outline-list');
+if (outlineListContainer) {
+  outlineListContainer.onclick = e => {
+    const a = e.target.closest('[data-h]');
+    if (!a) return;
+    e.preventDefault();
+    outlineListContainer.querySelectorAll('.outline-item').forEach(el => el.classList.remove('active'));
+    a.classList.add('active');
+
+    const hIdx = parseInt(a.dataset.h, 10);
+    if (B.dataset.mode === 'read') {
+      const headings = pvEl.querySelectorAll('h1,h2,h3,h4,h5,h6');
+      const targetH = headings[hIdx];
+      if (targetH) targetH.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      const charIndex = parseInt(a.dataset.index, 10);
+      if (!isNaN(charIndex)) {
+        ed.focus();
+        ed.setSelectionRange(charIndex, charIndex);
+        const linesBefore = (ed.value.slice(0, charIndex).match(/\n/g) || []).length;
+        ed.scrollTop = linesBefore * 20;
+      }
+    }
+  };
+}
 
 /* View Mode Toggle */
 function setViewMode(mode) {
@@ -1082,6 +1165,8 @@ async function openFile(path) {
   setSaveBadge(f.dirty ? 'unsaved' : 'saved');
   updateStatusPill();
   updateNoteMetaChips();
+  updateLiveInfo();
+  updateOutline();
 }
 
 let isReloadingTree = false;
@@ -2155,20 +2240,22 @@ if (btnSettingsOpenFolder) {
 const btnOpenSettingsRail = $('#btn-open-settings-rail');
 if (btnOpenSettingsRail) btnOpenSettingsRail.onclick = () => openSettingsModal();
 
-
-
 const navItemSearch = $('#nav-item-search');
 if (navItemSearch) navItemSearch.onclick = openCommandPalette;
 
 const navItemBoards = $('#nav-item-boards');
 if (navItemBoards) navItemBoards.onclick = () => promptCreateFile('canvas');
 
-
 const btnWorkspaceSwitch = $('#btn-sidebar-workspace-switch');
 if (btnWorkspaceSwitch) {
   btnWorkspaceSwitch.onclick = () => $('#btn-open-dir').click();
 }
 
+const btnToggleRightSidebar = $('#btn-toggle-right-sidebar');
+if (btnToggleRightSidebar) btnToggleRightSidebar.onclick = () => toggleRightSidebar();
+
+const btnCloseRightSidebar = $('#btn-close-right-sidebar');
+if (btnCloseRightSidebar) btnCloseRightSidebar.onclick = () => toggleRightSidebar(false);
 
 
 function isAnyModalOpen() {
@@ -2283,11 +2370,9 @@ window.addEventListener('keydown', async e => {
     case 'app:toggle-left-sidebar':
       toggleDrawer();
       break;
-    case 'app:toggle-right-sidebar': {
-      const widget = $('#note-outline-widget');
-      if (widget) widget.classList.toggle('force-open');
+    case 'app:toggle-right-sidebar':
+      toggleRightSidebar();
       break;
-    }
     case 'app:switch-vault':
       $('#btn-open-dir').click();
       break;
@@ -2764,8 +2849,8 @@ ed.oninput = () => {
   if (!curFile) return;
   curFile.content = ed.value;
   updateStatusPill();
-  updateNoteMetaChips();
-  updateHoverOutline();
+  updateLiveInfo(ed.value);
+  updateOutline();
   queueSave();
 };
 
@@ -2776,6 +2861,7 @@ js.oninput = () => {
     curFile.content = js.value;
     loadCanvas();
     draw();
+    updateLiveInfo();
     queueSave();
     js.classList.remove('bad');
   } catch (e) {
@@ -2955,6 +3041,7 @@ function toastWithAction(msg, actionText, actionFn, duration = 8000) {
    ========================================================================== */
 async function init() {
   updateDrawerState();
+  updateRightSidebarState();
   try {
     await reloadTree();
     await setupWatcher();
