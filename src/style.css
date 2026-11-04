@@ -151,8 +151,9 @@ html, body {
   transition: width 0.2s ease, opacity 0.2s ease;
 }
 
-/* When drawer is open and pinned, hide the collapsed rail so drawer replaces it seamlessly */
-#shell.drawer-open.drawer-pinned #rail {
+/* When drawer is closed, hide both rail and drawer so main area takes full width */
+#shell:not(.drawer-open) #rail,
+#shell:not(.drawer-open) #drawer {
   display: none !important;
 }
 
