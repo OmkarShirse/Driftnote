@@ -1551,37 +1551,46 @@ body[data-canvas-view="json"] #js { display: block; }
 .settings-body {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   max-height: 60vh;
   overflow-y: auto;
-  padding-right: 4px;
+  padding-right: 6px;
 }
 
 .settings-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
 
 .settings-section-title {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   color: var(--faint);
+  padding-bottom: 4px;
 }
 
 .settings-row {
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-row:last-child {
+  border-bottom: none;
 }
 
 .settings-label-wrap {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  padding-right: 16px;
 }
 
 .settings-label {
@@ -1591,24 +1600,29 @@ body[data-canvas-view="json"] #js { display: block; }
 }
 
 .settings-desc {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--mute);
+  line-height: 1.4;
 }
 
 .theme-switch-group {
   display: flex;
   gap: 6px;
+  align-items: center;
 }
 
 .theme-choice-btn {
-  height: 28px;
+  height: 30px;
   padding: 0 12px;
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--ink);
-  border-radius: 4px;
-  font-size: 12px;
+  border-radius: 6px;
+  font-size: 13px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: all 0.12s ease;
 }
 
@@ -2521,6 +2535,9 @@ textarea:focus-visible,
 /* FULL WIDTH (notes always fill the pane) */
 .md-stage, .md-inner-wrapper, .note-header-inner { width: 100%; max-width: none; margin-left: 0; margin-right: 0; }
 
+/* ==========================================================================
+   ROUND A: STRUCTURE CLEANUP STYLES
+   ========================================================================== */
 .welcome-links {
   display: flex;
   align-items: center;
