@@ -864,7 +864,7 @@ body[data-type="img"] #img-viewer { display: flex; }
 
 .note-header-inner {
   width: 100%;
-  max-width: 860px;
+  max-width: none;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1025,7 +1025,7 @@ body[data-type="img"] #img-viewer { display: flex; }
 
 .md-inner-wrapper {
   width: 100%;
-  max-width: 860px;
+  max-width: none;
   padding: 0 60px;
 }
 
@@ -2516,3 +2516,6 @@ textarea:focus-visible,
 /* faint text contrast fix */
 :root{--faint:#6e7379}
 :root[data-theme="dark"]{--faint:#777c82}
+
+/* FULL WIDTH (notes always fill the pane) */
+.md-stage, .md-inner-wrapper, .note-header-inner { width: 100%; max-width: none; margin-left: 0; margin-right: 0; }
