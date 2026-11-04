@@ -2166,11 +2166,7 @@ if (btnSettingsOpenFolder) {
 const btnOpenSettingsRail = $('#btn-open-settings-rail');
 if (btnOpenSettingsRail) btnOpenSettingsRail.onclick = openSettingsModal;
 
-const navItemSettings = $('#nav-item-settings');
-if (navItemSettings) navItemSettings.onclick = openSettingsModal;
 
-const btnSidebarSettings = $('#btn-sidebar-settings');
-if (btnSidebarSettings) btnSidebarSettings.onclick = openSettingsModal;
 
 const navItemSearch = $('#nav-item-search');
 if (navItemSearch) navItemSearch.onclick = openCommandPalette;
