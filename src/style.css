@@ -2520,3 +2520,35 @@ textarea:focus-visible,
 
 /* FULL WIDTH (notes always fill the pane) */
 .md-stage, .md-inner-wrapper, .note-header-inner { width: 100%; max-width: none; margin-left: 0; margin-right: 0; }
+
+.welcome-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.welcome-link {
+  background: none;
+  border: none;
+  color: var(--acc);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 6px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  border-radius: 4px;
+}
+
+.welcome-link:hover {
+  color: var(--acchov);
+  background: var(--hover);
+}
+
+.welcome-sep {
+  color: var(--mute);
+  font-size: 13px;
+  user-select: none;
+}
