@@ -2240,12 +2240,6 @@ if (btnSettingsOpenFolder) {
 const btnOpenSettingsRail = $('#btn-open-settings-rail');
 if (btnOpenSettingsRail) btnOpenSettingsRail.onclick = () => openSettingsModal();
 
-const navItemSearch = $('#nav-item-search');
-if (navItemSearch) navItemSearch.onclick = openCommandPalette;
-
-const navItemBoards = $('#nav-item-boards');
-if (navItemBoards) navItemBoards.onclick = () => promptCreateFile('canvas');
-
 const btnWorkspaceSwitch = $('#btn-sidebar-workspace-switch');
 if (btnWorkspaceSwitch) {
   btnWorkspaceSwitch.onclick = () => $('#btn-open-dir').click();
