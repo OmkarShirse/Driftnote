@@ -36,8 +36,8 @@ const DEFAULT_KEYMAP = {
   'app:command-palette': 'Ctrl+K',
   'app:toggle-view-mode': 'Ctrl+E',
   'app:toggle-theme': 'Ctrl+Shift+T',
-  'app:toggle-left-sidebar': 'Shift+ArrowLeft',
-  'app:toggle-right-sidebar': 'Shift+ArrowRight',
+  'app:toggle-left-sidebar': 'Ctrl+B',
+  'app:toggle-right-sidebar': 'Ctrl+Shift+B',
   'app:switch-vault': 'F1',
   'app:reload': 'F5',
   'editor:toggle-highlight': 'F9',
@@ -721,7 +721,7 @@ function updateLiveInfo(text) {
     const cvInfo = $('#info-details-canvas');
     if (noteInfo) noteInfo.style.display = 'flex';
     if (cvInfo) cvInfo.style.display = 'none';
-  } else if (curFile.type === 'canvas') {
+  } else if (curFile.type === 'cv') {
     const noteInfo = $('#info-details-note');
     const cvInfo = $('#info-details-canvas');
     if (noteInfo) noteInfo.style.display = 'none';
