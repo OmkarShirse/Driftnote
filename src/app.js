@@ -774,6 +774,40 @@ async function updatePreview() {
   updateLiveInfo();
 }
 
+function highlightCurrentHeading() {
+  const list = $('#outline-list');
+  if (!list || !curFile || curFile.type !== 'md') return;
+  const items = list.querySelectorAll('.outline-item');
+  if (!items.length) return;
+
+  if (B.dataset.mode === 'read') {
+    const headings = pvEl.querySelectorAll('h1,h2,h3,h4,h5,h6');
+    if (!headings.length) return;
+    const scrollPos = pvEl.scrollTop + 60;
+    let activeIdx = 0;
+    headings.forEach((h, idx) => {
+      if (h.offsetTop <= scrollPos) activeIdx = idx;
+    });
+    items.forEach((item, idx) => {
+      item.classList.toggle('active', idx === activeIdx);
+    });
+  } else {
+    const cursorPos = ed.selectionStart || 0;
+    let activeIdx = 0;
+    items.forEach((item, idx) => {
+      const pos = parseInt(item.dataset.index, 10);
+      if (!isNaN(pos) && pos <= cursorPos) activeIdx = idx;
+    });
+    items.forEach((item, idx) => {
+      item.classList.toggle('active', idx === activeIdx);
+    });
+  }
+}
+
+pvEl.addEventListener('scroll', highlightCurrentHeading);
+ed.addEventListener('keyup', highlightCurrentHeading);
+ed.addEventListener('click', highlightCurrentHeading);
+
 function updateOutline() {
   const list = $('#outline-list');
   if (!list) return;
@@ -791,6 +825,7 @@ function updateOutline() {
     const pad = (m[1].length - 1) * 10;
     return `<a href="#" class="outline-item" data-h="${i}" data-index="${m.index}" style="padding-left:${pad + 6}px">${esc(m[2])}</a>`;
   }).join('');
+  highlightCurrentHeading();
 }
 
 const outlineListContainer = $('#outline-list');
