@@ -2911,9 +2911,6 @@ if (welcomeNewNote) welcomeNewNote.onclick = () => promptCreateFile('md');
 const welcomeNewBoard = $('#welcome-btn-new-board');
 if (welcomeNewBoard) welcomeNewBoard.onclick = () => promptCreateFile('canvas');
 
-const welcomeSettings = $('#welcome-btn-settings');
-if (welcomeSettings) welcomeSettings.onclick = openSettingsModal;
-
 let watcherDebounceTimer = null;
 let watcherPendingPaths = new Set();
 
