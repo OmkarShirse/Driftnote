@@ -736,6 +736,28 @@ function updateLiveInfo(text) {
   }
 }
 
+let liveInfoThrottleTimer = null;
+let lastLiveInfoCall = 0;
+
+function throttledUpdateLiveInfo(text) {
+  const now = Date.now();
+  const elapsed = now - lastLiveInfoCall;
+  if (elapsed >= 200) {
+    if (liveInfoThrottleTimer) {
+      clearTimeout(liveInfoThrottleTimer);
+      liveInfoThrottleTimer = null;
+    }
+    lastLiveInfoCall = now;
+    updateLiveInfo(text);
+  } else if (!liveInfoThrottleTimer) {
+    liveInfoThrottleTimer = setTimeout(() => {
+      lastLiveInfoCall = Date.now();
+      liveInfoThrottleTimer = null;
+      updateLiveInfo(text);
+    }, 200 - elapsed);
+  }
+}
+
 function updateNoteMetaChips() {
   if (!curFile) {
     $('#note-title').textContent = 'No file open';
@@ -1480,6 +1502,7 @@ function commitCanvas() {
   js.value = curFile.content;
   queueSave();
   renderMinimap();
+  throttledUpdateLiveInfo();
 }
 
 const DX = { left: -1, right: 1, top: 0, bottom: 0 }, DY = { top: -1, bottom: 1, left: 0, right: 0 };
@@ -1636,6 +1659,7 @@ function zoomAt(mx, my, factor) {
   V.y = my - (my - V.y) * z / V.z;
   V.z = z;
   requestViewUpdate();
+  throttledUpdateLiveInfo();
 }
 
 function editNode(el) {
@@ -1688,6 +1712,7 @@ function addNode(x, y, type) {
   commitCanvas();
   nodeHtmlCache.clear();
   draw();
+  throttledUpdateLiveInfo();
   const el = world.querySelector('[data-id="' + n.id + '"]');
   if (el) editNode(el);
 }
@@ -1827,6 +1852,7 @@ $('#tb-del').onclick = () => {
   sel = null;
   commitCanvas();
   draw();
+  throttledUpdateLiveInfo();
 };
 
 /* Canvas Minimap Renderer */
@@ -1974,11 +2000,11 @@ $('#ac').onclick = () => { const p = mid(240, 100); addNode(p[0], p[1], 'text');
 $('#ag').onclick = () => { const p = mid(420, 300); addNode(p[0], p[1], 'group'); };
 $('#zi').onclick = () => { const r = vp.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.25); };
 $('#zo').onclick = () => { const r = vp.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.25); };
-$('#zr').onclick = () => { V = { x: 60, y: 80, z: 1 }; requestViewUpdate(); };
+$('#zr').onclick = () => { V = { x: 60, y: 80, z: 1 }; requestViewUpdate(); throttledUpdateLiveInfo(); };
 
 $('#pill-zin').onclick = () => { const r = vp.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1.25); };
 $('#pill-zout').onclick = () => { const r = vp.getBoundingClientRect(); zoomAt(r.width / 2, r.height / 2, 1 / 1.25); };
-$('#pill-zr').onclick = () => { V = { x: 60, y: 80, z: 1 }; requestViewUpdate(); };
+$('#pill-zr').onclick = () => { V = { x: 60, y: 80, z: 1 }; requestViewUpdate(); throttledUpdateLiveInfo(); };
 
 $('#btn-canvas-view').onclick = () => {
   const current = B.dataset.canvasView;
@@ -2321,6 +2347,7 @@ window.addEventListener('keydown', async e => {
         sel = null;
         commitCanvas();
         draw();
+        throttledUpdateLiveInfo();
         e.preventDefault();
         return;
       } else if (selE) {
@@ -2328,6 +2355,7 @@ window.addEventListener('keydown', async e => {
         selE = null;
         commitCanvas();
         draw();
+        throttledUpdateLiveInfo();
         e.preventDefault();
         return;
       }
@@ -2878,7 +2906,7 @@ ed.oninput = () => {
   if (!curFile) return;
   curFile.content = ed.value;
   updateStatusPill();
-  updateLiveInfo(ed.value);
+  throttledUpdateLiveInfo(ed.value);
   updateOutline();
   queueSave();
 };
@@ -2890,7 +2918,7 @@ js.oninput = () => {
     curFile.content = js.value;
     loadCanvas();
     draw();
-    updateLiveInfo();
+    throttledUpdateLiveInfo();
     queueSave();
     js.classList.remove('bad');
   } catch (e) {
