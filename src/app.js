@@ -41,7 +41,8 @@ const DEFAULT_KEYMAP = {
   'app:switch-vault': 'F1',
   'app:reload': 'F5',
   'editor:toggle-highlight': 'F9',
-  'app:open-shortcuts': 'Ctrl+/'
+  'app:open-shortcuts': 'Ctrl+/',
+  'app:open-settings': 'Ctrl+,'
 };
 
 const ACTION_DESCRIPTIONS = {
@@ -61,7 +62,8 @@ const ACTION_DESCRIPTIONS = {
   'app:switch-vault': 'Open vault / folder',
   'app:reload': 'Reload workspace tree',
   'editor:toggle-highlight': 'Toggle highlight (==text==)',
-  'app:open-shortcuts': 'Open keyboard shortcuts'
+  'app:open-shortcuts': 'Open keyboard shortcuts',
+  'app:open-settings': 'Open settings'
 };
 
 let KEYMAP = { ...DEFAULT_KEYMAP };
@@ -805,10 +807,12 @@ function highlightCurrentHeading() {
   if (B.dataset.mode === 'read') {
     const headings = pvEl.querySelectorAll('h1,h2,h3,h4,h5,h6');
     if (!headings.length) return;
-    const scrollPos = pvEl.scrollTop + 60;
+    const docContainer = $('#doc-container');
+    const containerTop = docContainer ? docContainer.getBoundingClientRect().top : 0;
     let activeIdx = 0;
     headings.forEach((h, idx) => {
-      if (h.offsetTop <= scrollPos) activeIdx = idx;
+      const relTop = h.getBoundingClientRect().top - containerTop;
+      if (relTop <= 60) activeIdx = idx;
     });
     items.forEach((item, idx) => {
       item.classList.toggle('active', idx === activeIdx);
@@ -826,7 +830,17 @@ function highlightCurrentHeading() {
   }
 }
 
-pvEl.addEventListener('scroll', highlightCurrentHeading);
+let outlineRaf = null;
+function onDocContainerScroll() {
+  if (outlineRaf !== null) return;
+  outlineRaf = requestAnimationFrame(() => {
+    outlineRaf = null;
+    highlightCurrentHeading();
+  });
+}
+
+const docContainerEl = $('#doc-container');
+if (docContainerEl) docContainerEl.addEventListener('scroll', onDocContainerScroll);
 ed.addEventListener('keyup', highlightCurrentHeading);
 ed.addEventListener('click', highlightCurrentHeading);
 
@@ -2046,6 +2060,7 @@ function getPaletteActions() {
     { id: 'app:toggle-theme', title: 'Toggle Light / Dark Theme', icon: '☀️', cat: 'View' },
     { id: 'app:toggle-left-sidebar', title: 'Toggle File Drawer', icon: '📑', cat: 'View' },
     { id: 'app:open-shortcuts', title: 'Keyboard Shortcuts', icon: '⌨️', cat: 'Help' },
+    { id: 'app:open-settings', title: 'Open settings', icon: '', cat: 'Settings' },
     { id: 'app:reload', title: 'Reload Workspace Tree', icon: '🔄', cat: 'Vault' }
   ];
 
@@ -2127,7 +2142,9 @@ async function executePaletteItem(item) {
   } else if (item.id === 'app:toggle-left-sidebar') {
     toggleDrawer();
   } else if (item.id === 'app:open-shortcuts') {
-    openShortcutsDialog();
+    openSettingsModal('shortcuts');
+  } else if (item.id === 'app:open-settings') {
+    openSettingsModal();
   } else if (item.id === 'app:reload') {
     await reloadTree();
     toast('Workspace reloaded');
@@ -2442,6 +2459,9 @@ window.addEventListener('keydown', async e => {
       break;
     case 'app:open-shortcuts':
       openSettingsModal('shortcuts');
+      break;
+    case 'app:open-settings':
+      openSettingsModal();
       break;
   }
 });
@@ -3094,8 +3114,8 @@ function toastWithAction(msg, actionText, actionFn, duration = 8000) {
    INITIALIZATION
    ========================================================================== */
 async function init() {
-  updateDrawerState();
   updateRightSidebarState();
+  updateDrawerState();
   try {
     await reloadTree();
     await setupWatcher();
@@ -3138,6 +3158,10 @@ async function init() {
     }
   }
 }
-init();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
 
 })();

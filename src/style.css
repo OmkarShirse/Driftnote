@@ -287,10 +287,13 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 34px;
+  gap: var(--space-1);
+  min-height: 34px;
   padding: 0 6px;
   border-radius: 6px;
   transition: background 0.12s ease;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .drawer-header:hover {
@@ -300,30 +303,38 @@ html, body {
 .vault-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   font-weight: 600;
   color: var(--ink);
   cursor: pointer;
+  min-width: 0;
+  flex: 1 1 0;
   overflow: hidden;
-  flex: 1;
 }
 
 .vault-icon {
   font-size: 14px;
   color: var(--ink);
+  flex-shrink: 0;
 }
 
 .vault-title {
-  font-size: 13.5px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .drawer-header-actions {
   display: flex;
   align-items: center;
   gap: 2px;
+  flex-shrink: 0;
+}
+
+.drawer-header-actions .btn-icon-sm {
+  flex-shrink: 0;
 }
 
 .btn-icon-sm {
@@ -2162,6 +2173,7 @@ body[data-canvas-view="json"] #js { display: block; }
 }
 .drawer-header {
   padding: 0 var(--space-1) var(--space-2) var(--space-1);
+  min-width: 0;
 }
 
 #tabs-bar {
