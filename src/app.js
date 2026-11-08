@@ -1422,7 +1422,7 @@ function renderTree() {
           `<span class="chevron">${isCollapsed ? ICONS.chevronRight : ICONS.chevronDown}</span>` +
           `<span class="icon">${ICONS.folder}</span>` +
           `<span class="title">${esc(node.name)}</span>` +
-          `<button class="row-more-btn" title="Actions" aria-label="Directory actions" data-action="more">⋯</button>`;
+          `<button class="row-more-btn" title="Actions" aria-label="Directory actions" data-action="more"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>`;
         wrap.appendChild(row);
 
         const sub = document.createElement('div');
@@ -1458,7 +1458,7 @@ function renderTree() {
         `  <span class="chevron" style="opacity:0">•</span>` +
         `  <span class="icon">${icon}</span>` +
         `  <span class="title">${esc(node.name)}</span>` +
-        (showMoreBtn ? `  <button class="row-more-btn" title="Actions" aria-label="File actions" data-action="more">⋯</button>` : '');
+        (showMoreBtn ? `  <button class="row-more-btn" title="Actions" aria-label="File actions" data-action="more"><svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>` : '');
       return row;
     }
   }

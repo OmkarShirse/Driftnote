@@ -1,5 +1,5 @@
 import re,collections
-rx=re.compile('[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\u25A0-\u25FF\u2300-\u23FF\uFE0F]')
+rx=re.compile('[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF\u25A0-\u25FF\u2200-\u23FF\uFE0F]')
 for f in ('src/index.html','src/app.js','src/style.css'):
     try: lines=open(f,encoding='utf-8').read().split('\n')
     except OSError: continue

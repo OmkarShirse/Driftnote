@@ -2639,3 +2639,15 @@ textarea:focus-visible,
   color: var(--acc);
   font-weight: 500;
 }
+
+/* VISUAL TUNING v1.2 corners (delete this block to undo) */
+:root { --r-xs: 4px; --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-full: 999px; }
+.btn-primary, .btn-danger, .btn-save, .btn-notion-sm, .btn-icon-sm, .btn-section-action, .pill-btn, .theme-choice-btn, .welcome-link, .rail-btn, .tab-drawer-toggle, .row-more-btn, .toast-action-btn, .menu-item { border-radius: var(--r-sm); }
+.tree-row, .modal-input, #modal-input { border-radius: var(--r-sm); }
+.tab-pill { border-radius: var(--r-md); }
+.card-toolbar, .row-popover-menu, .rail-tooltip, .outline-dropdown, .welcome-card, .canvas-minimap { border-radius: var(--r-md); }
+.canvas-minimap { overflow: hidden; }
+.modal-card, .settings-card, .shortcuts-card, .palette-card { border-radius: var(--r-lg); }
+.status-badge, .pill-meta, .outline-pill { border-radius: var(--r-full); }
+#pv img, #pv pre { border-radius: var(--r-md); }
+.node, .node::before { border-radius: var(--r-md); }
