@@ -132,6 +132,19 @@ const esc = s => String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '
 const COL = { 1: 'var(--c-1)', 2: 'var(--c-2)', 3: 'var(--c-3)', 4: 'var(--c-4)', 5: 'var(--c-5)', 6: 'var(--c-6)' };
 const uid = () => Math.random().toString(16).slice(2, 18);
 
+const ICONS = {
+  md: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+  cv: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/></svg>',
+  img: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
+  folder: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v13h18V9H11L9 7H3z"/></svg>',
+  chevronRight: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>',
+  chevronDown: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>',
+  close: '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  sun: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>',
+  moon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>',
+  link: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>'
+};
+
 const ed = $('#ed'), pvEl = $('#pv'), js = $('#js'), vp = $('#vp'), world = $('#world'), svg = $('#edges');
 const treeEl = $('#file-tree'), badgeEl = $('#status-badge');
 const cardToolbar = $('#card-toolbar');
@@ -261,14 +274,14 @@ function renderTabs() {
     pill.className = `tab-pill${tab.path === curPath ? ' active' : ''}${tab.dirty ? ' dirty' : ''}`;
     pill.dataset.path = tab.path;
 
-    let icon = '📄';
-    if (tab.type === 'cv') icon = '◫';
-    else if (tab.type === 'img') icon = '🖼️';
+    let icon = ICONS.md;
+    if (tab.type === 'cv') icon = ICONS.cv;
+    else if (tab.type === 'img') icon = ICONS.img;
 
     pill.innerHTML = `<span class="tab-icon">${icon}</span>` +
       `<span class="tab-title">${esc(tab.name)}</span>` +
       `<span class="tab-dot" title="Unsaved changes"></span>` +
-      `<button class="tab-close" title="Close (Middle-click)" aria-label="Close tab">✕</button>`;
+      `<button class="tab-close" title="Close (Middle-click)" aria-label="Close tab">${ICONS.close}</button>`;
 
     pill.onclick = e => {
       if (e.target.closest('.tab-close')) return;
@@ -357,7 +370,7 @@ function applyTheme(isDark) {
   const themeBtn = $('#btn-theme');
   if (themeBtn) {
     const icon = themeBtn.querySelector('.btn-icon');
-    if (icon) icon.textContent = dark ? '🌙' : '☀️';
+    if (icon) icon.innerHTML = dark ? ICONS.moon : ICONS.sun;
   }
   if (B.dataset.type === 'cv' || (curFile && curFile.type === 'cv')) {
     nodeHtmlCache.clear();
@@ -894,7 +907,7 @@ if (outlineListContainer) {
 function setViewMode(mode) {
   B.dataset.mode = mode;
   const btn = $('#btn-view-mode');
-  if (btn) btn.textContent = mode === 'read' ? '✏️ Edit' : '📖 Read';
+  if (btn) btn.textContent = mode === 'read' ? 'Edit' : 'Read';
   if (mode === 'read') updatePreview();
   else ed.focus();
 }
@@ -1216,7 +1229,7 @@ async function openFile(path) {
 
   const pageIcon = $('#note-page-icon');
   if (pageIcon) {
-    pageIcon.textContent = (f.type === 'cv') ? '◫' : (f.type === 'img') ? '🖼️' : '📄';
+    pageIcon.innerHTML = (f.type === 'cv') ? ICONS.cv : (f.type === 'img') ? ICONS.img : ICONS.md;
   }
 
   if (f.type === 'md') {
@@ -1384,7 +1397,7 @@ function renderTree() {
     const emptyPrompt = document.createElement('div');
     emptyPrompt.className = 'tree-empty-prompt';
     emptyPrompt.innerHTML = `
-      <div class="tree-empty-icon">📂</div>
+      <div class="tree-empty-icon">${ICONS.folder}</div>
       <div class="tree-empty-text">${!rootTree ? 'No workspace folder selected' : 'Workspace folder is empty'}</div>
       <button id="btn-tree-open" class="btn-tree-open">Choose Folder</button>
     `;
@@ -1406,8 +1419,8 @@ function renderTree() {
         row.className = 'tree-row dir-row';
         row.dataset.d = node.path;
         row.innerHTML =
-          `<span class="chevron">${isCollapsed ? '▶' : '▼'}</span>` +
-          `<span class="icon">📁</span>` +
+          `<span class="chevron">${isCollapsed ? ICONS.chevronRight : ICONS.chevronDown}</span>` +
+          `<span class="icon">${ICONS.folder}</span>` +
           `<span class="title">${esc(node.name)}</span>` +
           `<button class="row-more-btn" title="Actions" aria-label="Directory actions" data-action="more">⋯</button>`;
         wrap.appendChild(row);
@@ -1435,9 +1448,9 @@ function renderTree() {
       row.dataset.p = node.path;
 
       const ext = node.name.split('.').pop().toLowerCase();
-      let icon = '📄';
-      if (ext === 'canvas') icon = '◫';
-      else if (IMG_EXTS.includes(ext)) icon = '🖼️';
+      let icon = ICONS.md;
+      if (ext === 'canvas') icon = ICONS.cv;
+      else if (IMG_EXTS.includes(ext)) icon = ICONS.img;
 
       const showMoreBtn = allowRenameTrash && !isPathGuarded(node.path) && isValidNoteExtension(node.path);
 
@@ -1598,14 +1611,14 @@ async function renderNodeBodyContent(n, containerEl) {
           return;
         }
       }
-      containerEl.innerHTML = `<strong>🖼️ ${esc(rawFile)}</strong><br><span class="mute">Image not loaded</span>`;
+      containerEl.innerHTML = `<strong>${esc(rawFile)}</strong><br><span class="mute">Image not loaded</span>`;
       nodeHtmlCache.set(cacheKey, containerEl.innerHTML);
     } else {
-      containerEl.innerHTML = `<strong>📄 ${esc(rawFile)}</strong>`;
+      containerEl.innerHTML = `<strong>${esc(rawFile)}</strong>`;
       nodeHtmlCache.set(cacheKey, containerEl.innerHTML);
     }
   } else if (n.type === 'link') {
-    containerEl.innerHTML = `<span class="mute">🔗</span> <a href="#" class="canvas-link" data-url="${esc(n.url || '')}">${esc(n.url || '')}</a>`;
+    containerEl.innerHTML = `<span class="mute">${ICONS.link}</span> <a href="#" class="canvas-link" data-url="${esc(n.url || '')}">${esc(n.url || '')}</a>`;
     nodeHtmlCache.set(cacheKey, containerEl.innerHTML);
   }
 }
@@ -2051,23 +2064,23 @@ function closeCommandPalette() {
 
 function getPaletteActions() {
   const baseActions = [
-    { id: 'file:new-note', title: 'New Markdown Note', icon: '📄', cat: 'File' },
-    { id: 'file:new-canvas', title: 'New Canvas Board', icon: '◫', cat: 'File' },
-    { id: 'file:new-folder', title: 'New Folder', icon: '📁', cat: 'File' },
-    { id: 'app:switch-vault', title: 'Open / Switch Folder', icon: '📂', cat: 'Vault' },
-    { id: 'app:toggle-view-mode', title: 'Toggle Read / Edit Mode', icon: '✏️', cat: 'Editor' },
-    { id: 'editor:toggle-highlight', title: 'Toggle Highlight (==text==)', icon: '🖍️', cat: 'Editor' },
-    { id: 'app:toggle-theme', title: 'Toggle Light / Dark Theme', icon: '☀️', cat: 'View' },
-    { id: 'app:toggle-left-sidebar', title: 'Toggle File Drawer', icon: '📑', cat: 'View' },
-    { id: 'app:open-shortcuts', title: 'Keyboard Shortcuts', icon: '⌨️', cat: 'Help' },
+    { id: 'file:new-note', title: 'New Markdown Note', icon: '', cat: 'File' },
+    { id: 'file:new-canvas', title: 'New Canvas Board', icon: '', cat: 'File' },
+    { id: 'file:new-folder', title: 'New Folder', icon: '', cat: 'File' },
+    { id: 'app:switch-vault', title: 'Open / Switch Folder', icon: '', cat: 'Vault' },
+    { id: 'app:toggle-view-mode', title: 'Toggle Read / Edit Mode', icon: '', cat: 'Editor' },
+    { id: 'editor:toggle-highlight', title: 'Toggle Highlight (==text==)', icon: '', cat: 'Editor' },
+    { id: 'app:toggle-theme', title: 'Toggle Light / Dark Theme', icon: '', cat: 'View' },
+    { id: 'app:toggle-left-sidebar', title: 'Toggle File Drawer', icon: '', cat: 'View' },
+    { id: 'app:open-shortcuts', title: 'Keyboard Shortcuts', icon: '', cat: 'Help' },
     { id: 'app:open-settings', title: 'Open settings', icon: '', cat: 'Settings' },
-    { id: 'app:reload', title: 'Reload Workspace Tree', icon: '🔄', cat: 'Vault' }
+    { id: 'app:reload', title: 'Reload Workspace Tree', icon: '', cat: 'Vault' }
   ];
 
   const fileActions = Array.from(fileMap.values()).map(f => ({
     id: `jump:${f.path}`,
     title: f.name,
-    icon: f.type === 'cv' ? '◫' : f.type === 'img' ? '🖼️' : '📄',
+    icon: '',
     cat: f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')) : 'Root',
     path: f.path
   }));
@@ -2187,7 +2200,7 @@ function openShortcutsDialog() {
   const conflicts = detectHotkeyConflicts();
   if (conflicts.length) {
     banner.hidden = false;
-    banner.innerHTML = `<strong>⚠️ Shortcut Conflict Warning:</strong> ` +
+    banner.innerHTML = `<strong>Shortcut Conflict Warning:</strong> ` +
       conflicts.map(c => `<code>${c.key}</code> is shared by <em>${c.actions.join('</em> and <em>')}</em>`).join('; ') +
       `. Only the first registered action will trigger.`;
   } else {
