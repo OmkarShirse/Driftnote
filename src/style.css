@@ -2661,3 +2661,11 @@ textarea:focus-visible,
 .settings-section { padding: 12px 0; }
 .settings-section + .settings-section { border-top: 1px solid var(--line); }
 .settings-section-title { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); padding: 0 0 4px; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; min-height: 48px; border-bottom: 0; }
+.settings-row + .settings-row { border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.settings-label-wrap { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 0; }
+.settings-label { font-size: 13px; font-weight: 500; color: var(--ink); }
+.settings-desc { font-size: 12px; color: var(--mute); line-height: 1.4; }
+.settings-row .btn-notion-sm, .settings-row .theme-choice-btn, .settings-row select { height: 30px; padding: 0 12px; font-size: 13px; border-radius: 8px; display: inline-flex; align-items: center; flex: none; }
+.theme-switch-group { display: flex; gap: 6px; flex: none; }
+.settings-row .notion-toggle { flex: none; }
